@@ -603,7 +603,7 @@ EOF
     environment:
       - USE_IPTABLES_NFT_BACKEND=0
       - RUST_LOG=INFO
-    command: phantun_server --local ${PHANTUN_PORT} --remote 127.0.0.1:${WG_PORT} --ipv4-only
+    command: phantun-server --local ${PHANTUN_PORT} --remote 127.0.0.1:${WG_PORT} --ipv4-only
     restart: unless-stopped
     depends_on:
       - wireguard
@@ -887,7 +887,7 @@ load_images() {
         if [ -f "${IMAGE_DIR}/${tar}" ]; then
             log_info "发现 ${IMAGE_DIR}/${tar}，正在加载..."
             docker load -i "${IMAGE_DIR}/${tar}"
-            # phantun.tar 导出标签为 phantun:0.8.1，需重命名为 zcb617/phantun:0.8.1
+            # docker load 后标签可能为 phantun:0.8.1，需重命名为 zcb617/phantun:0.8.1
             if [ "$tar" = "phantun.tar" ] && [ "$tag" = "zcb617/phantun:0.8.1" ]; then
                 docker tag phantun:0.8.1 zcb617/phantun:0.8.1
             fi
