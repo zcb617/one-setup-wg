@@ -528,7 +528,7 @@ generate_docker_compose() {
     cat > "${DEPLOY_DIR}/docker-compose.yml" << EOF
 services:
   wireguard:
-    image: one-step-wg:latest
+    image: one-step-wg:0.0.3
     container_name: wireguard
     cap_add:
       - NET_ADMIN
@@ -549,7 +549,7 @@ services:
     restart: unless-stopped
 
   wg-gen-web:
-    image: wg-gen-web:0.0.1
+    image: wg-gen-web:0.0.2
     container_name: wg-gen-web
     environment:
       - WG_CONF_DIR=/config
@@ -786,16 +786,16 @@ load_images() {
         missing_images+=("james/wg-api:latest|wg-api.tar")
     fi
 
-    if docker image inspect "wg-gen-web:0.0.1" &>/dev/null; then
-        log_info "wg-gen-web:0.0.1 已存在"
+    if docker image inspect "wg-gen-web:0.0.2" &>/dev/null; then
+        log_info "wg-gen-web:0.0.2 已存在"
     else
-        missing_images+=("wg-gen-web:0.0.1|wg-gen-web.tar")
+        missing_images+=("wg-gen-web:0.0.2|wg-gen-web.tar")
     fi
 
-    if docker image inspect "one-step-wg:latest" &>/dev/null; then
-        log_info "one-step-wg:latest 已存在"
+    if docker image inspect "one-step-wg:0.0.3" &>/dev/null; then
+        log_info "one-step-wg:0.0.3 已存在"
     else
-        missing_images+=("one-step-wg:latest|one-step-wg.tar")
+        missing_images+=("one-step-wg:0.0.3|one-step-wg.tar")
     fi
 
     # 全部存在，直接返回
@@ -843,8 +843,8 @@ load_images() {
             local tag=""
             case "$tar" in
                 wg-api.tar) tag="james/wg-api:latest" ;;
-                wg-gen-web.tar) tag="wg-gen-web:0.0.1" ;;
-                one-step-wg.tar) tag="one-step-wg:latest" ;;
+                wg-gen-web.tar) tag="wg-gen-web:0.0.2" ;;
+                one-step-wg.tar) tag="one-step-wg:0.0.3" ;;
             esac
             log_info "正在拉取 $tag ..."
             docker pull "$tag" || {

@@ -36,6 +36,7 @@ RUN apt-get update && \
         wireguard \
         iptables \
         iproute2 \
+        inotify-tools \
         curl && \
     rm -rf /var/lib/apt/lists/*
 
