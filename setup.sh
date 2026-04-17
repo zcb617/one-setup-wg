@@ -360,6 +360,8 @@ EOF
     now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
     # 1. 生成 server.json（wg-gen-web 的配置源）
+    local server_allowed_ips_json
+    server_allowed_ips_json=$(ips_to_json_array "$PEER_ALLOWED_IPS")
     cat > "${config_dir}/server.json" << EOF
 {
   "address": ["${WG_SERVER_CIDR}"],
@@ -370,7 +372,7 @@ EOF
   "endpoint": "${server_external_ip}:${WG_PORT}",
   "persistentKeepalive": ${PEER_KEEPALIVE},
   "dns": ["${WG_DNS}"],
-  "allowedips": ["0.0.0.0/0", "::/0"],
+  "allowedips": ${server_allowed_ips_json},
   "preUp": "",
   "postUp": "/etc/wireguard/up.d/0000wg0",
   "preDown": "/etc/wireguard/pre-down.d/0000wg0",
