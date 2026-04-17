@@ -89,12 +89,6 @@ else
     log_info "部署目录不存在，跳过容器清理"
 fi
 
-# 单独清理 phantun（可能通过 docker run 手动启动过）
-if docker ps -a --format '{{.Names}}' | grep -q '^phantun$'; then
-    docker rm -f phantun 2>/dev/null || true
-    log_info "phantun 容器已删除"
-fi
-
 # ========================= 删除 WireGuard 接口 =========================
 log_step "检查并删除 wg0 接口..."
 if ip link show wg0 &>/dev/null 2>&1; then
