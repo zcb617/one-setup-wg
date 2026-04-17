@@ -81,9 +81,13 @@ fi
 
 # ========================= 停止并删除容器 =========================
 log_step "停止并删除容器..."
-cd "$DEPLOY_DIR"
-$COMPOSE_CMD down -v --remove-orphans 2>/dev/null || true
-log_info "容器已删除"
+if [ -d "$DEPLOY_DIR" ]; then
+    cd "$DEPLOY_DIR"
+    $COMPOSE_CMD down -v --remove-orphans 2>/dev/null || true
+    log_info "容器已删除"
+else
+    log_info "部署目录不存在，跳过容器清理"
+fi
 
 # ========================= 删除 WireGuard 接口 =========================
 log_step "检查并删除 wg0 接口..."
