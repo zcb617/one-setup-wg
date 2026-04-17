@@ -538,7 +538,7 @@ services:
     restart: unless-stopped
 
   wg-gen-web:
-    image: vx3r/wg-gen-web:latest
+    image: wg-gen-web:0.0.1
     container_name: wg-gen-web
     environment:
       - WG_CONF_DIR=/config
@@ -775,10 +775,10 @@ load_images() {
         missing_images+=("james/wg-api:latest|wg-api.tar")
     fi
 
-    if docker image inspect "vx3r/wg-gen-web:latest" &>/dev/null; then
-        log_info "vx3r/wg-gen-web:latest 已存在"
+    if docker image inspect "wg-gen-web:0.0.1" &>/dev/null; then
+        log_info "wg-gen-web:0.0.1 已存在"
     else
-        missing_images+=("vx3r/wg-gen-web:latest|wg-gen-web.tar")
+        missing_images+=("wg-gen-web:0.0.1|wg-gen-web.tar")
     fi
 
     if docker image inspect "one-step-wg:latest" &>/dev/null; then
@@ -832,7 +832,7 @@ load_images() {
             local tag=""
             case "$tar" in
                 wg-api.tar) tag="james/wg-api:latest" ;;
-                wg-gen-web.tar) tag="vx3r/wg-gen-web:latest" ;;
+                wg-gen-web.tar) tag="wg-gen-web:0.0.1" ;;
                 one-step-wg.tar) tag="one-step-wg:latest" ;;
             esac
             log_info "正在拉取 $tag ..."
