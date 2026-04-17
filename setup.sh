@@ -593,7 +593,7 @@ EOF
         cat >> "${DEPLOY_DIR}/docker-compose.yml" << EOF
 
   phantun:
-    image: dndx/phantun:latest
+    image: phantun:0.8.1
     container_name: phantun
     cap_add:
       - NET_ADMIN
@@ -867,10 +867,10 @@ load_images() {
     fi
 
     if [ "${PHANTUN_ENABLE}" = "true" ]; then
-        if docker image inspect "dndx/phantun:latest" &>/dev/null; then
-            log_info "dndx/phantun:latest 已存在"
+        if docker image inspect "phantun:0.8.1" &>/dev/null; then
+            log_info "phantun:0.8.1 已存在"
         else
-            missing_images+=("dndx/phantun:latest|phantun.tar")
+            missing_images+=("phantun:0.8.1|phantun.tar")
         fi
     fi
 
@@ -921,6 +921,7 @@ load_images() {
                 wg-api.tar) tag="james/wg-api:latest" ;;
                 wg-gen-web.tar) tag="wg-gen-web:0.0.2" ;;
                 one-step-wg.tar) tag="one-step-wg:0.0.3" ;;
+                phantun.tar) tag="phantun:0.8.1" ;;
             esac
             log_info "正在拉取 $tag ..."
             docker pull "$tag" || {
