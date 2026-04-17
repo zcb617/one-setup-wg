@@ -915,10 +915,14 @@ main() {
     generate_docker_compose
 
     log_step "清理旧状态（避免重复启动冲突）..."
-    cd "$DEPLOY_DIR" && $COMPOSE_CMD down 2>/dev/null || true
-
-    # host 模式下容器停止不会自动清理宿主机 wg0 接口，手动删除
-    ip link del wg0 2>/dev/null || true
+    if [ -x "${DEPLOY_DIR}/uninstall.sh" ]; then
+        log_info "执行卸载脚本..."
+        cd "$DEPLOY_DIR" && bash -x ./uninstall.sh --force
+    else
+        log_warn "未找到卸载脚本，尝试直接停止容器..."
+        cd "$DEPLOY_DIR" && $COMPOSE_CMD down -v --remove-orphans 2>/dev/null || true
+        ip link del wg0 2>/dev/null || true
+    fi
 
     start_services
 
