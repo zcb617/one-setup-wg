@@ -1,0 +1,11 @@
+# Docker image archives
+*.tar
+
+# Binary files
+docker-compose-linux-x86_64
+
+# QR code image
+baidu.png
+
+# Remember hook data
+.remember/
