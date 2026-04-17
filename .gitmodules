@@ -1,0 +1,3 @@
+[submodule "vendor/wg-gen-web"]
+	path = vendor/wg-gen-web
+	url = git@github.com:zcb617/wg-gen-web.git
