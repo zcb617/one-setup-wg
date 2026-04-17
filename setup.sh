@@ -15,7 +15,7 @@ DEFAULT_TABLE_NAME="wireguard"
 DEFAULT_TABLE_ID="9999"
 DEFAULT_API_PORT="65002"
 DEFAULT_WEB_PORT="65003"
-DEFAULT_OAUTH="fake"
+DEFAULT_OAUTH="file"
 DEFAULT_PEER_COUNT="1"
 DEFAULT_PEER_KEEPALIVE=""
 DEFAULT_DEPLOY_DIR="/opt/one-step-wg"
@@ -66,7 +66,7 @@ interactive_setup() {
 
     API_PORT=$(read_input "wg-api 端口" "$DEFAULT_API_PORT")
     WEB_PORT=$(read_input "wg-gen-web 端口" "$DEFAULT_WEB_PORT")
-    OAUTH=$(read_input "认证方式 (fake/github/oauth2oidc)" "$DEFAULT_OAUTH")
+    OAUTH=$(read_input "认证方式 (file/fake/github/oauth2oidc)" "$DEFAULT_OAUTH")
 
     PEER_COUNT="$DEFAULT_PEER_COUNT"
     PEER_KEEPALIVE="25"
@@ -436,6 +436,17 @@ AllowedIPs = ${client_ip}/32
 EOF
     chmod 600 "${config_dir}/wg0.conf"
     log_info "生成 wg0.conf"
+
+    # 4. 生成 users.txt（文件认证模式使用）
+    if [ "${OAUTH}" = "file" ]; then
+        cat > "${config_dir}/users.txt" << EOF
+# WireGuard Web UI 用户认证文件
+# 格式: username:password
+admin:admin
+EOF
+        chmod 600 "${config_dir}/users.txt"
+        log_info "生成 users.txt (默认用户: admin / admin)"
+    fi
 }
 
 generate_up_script() {
