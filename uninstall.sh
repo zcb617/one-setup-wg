@@ -18,23 +18,35 @@ log_warn()  { echo -e "${YELLOW}[WARN]${NC} $*"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
 log_step()  { echo -e "${CYAN}[STEP]${NC} $*"; }
 
+# ========================= 参数解析 =========================
+FORCE=false
+KEEP_DIR=false
+for arg in "$@"; do
+    case "$arg" in
+        --force) FORCE=true ;;
+        --keep-dir) KEEP_DIR=true ;;
+    esac
+done
+
 # ========================= 确认 =========================
-echo "============================================="
-echo "  one-step-wg: 卸载"
-echo "============================================="
-echo ""
-echo "  将删除以下内容："
-echo "    - Docker 容器: wireguard, wg-api, wg-gen-web"
-echo "    - WireGuard 接口 wg0"
-echo "    - iptables MASQUERADE / FORWARD 规则"
-echo "    - ip route 自定义路由表 (table 9999)"
-echo "    - /etc/iproute2/rt_tables.d/wg.conf"
-echo "    - 部署目录 (默认 /opt/one-step-wg)"
-echo ""
-read -rp "确认卸载? 所有配置将被删除 (yes/N): " confirm
-if [[ "$confirm" != "yes" ]]; then
-    echo "已取消。"
-    exit 0
+if [ "$FORCE" != true ]; then
+    echo "============================================="
+    echo "  one-step-wg: 卸载"
+    echo "============================================="
+    echo ""
+    echo "  将删除以下内容："
+    echo "    - Docker 容器: wireguard, wg-api, wg-gen-web"
+    echo "    - WireGuard 接口 wg0"
+    echo "    - iptables MASQUERADE / FORWARD 规则"
+    echo "    - ip route 自定义路由表 (table 9999)"
+    echo "    - /etc/iproute2/rt_tables.d/wg.conf"
+    echo "    - 部署目录 (默认 /opt/one-step-wg)"
+    echo ""
+    read -rp "确认卸载? 所有配置将被删除 (yes/N): " confirm
+    if [[ "$confirm" != "yes" ]]; then
+        echo "已取消。"
+        exit 0
+    fi
 fi
 
 # ========================= 读取部署配置 =========================
@@ -109,12 +121,16 @@ else
 fi
 
 # ========================= 删除部署目录 =========================
-log_step "删除部署目录..."
-if [ -d "$DEPLOY_DIR" ]; then
-    rm -rf "$DEPLOY_DIR"
-    log_info "已删除 $DEPLOY_DIR"
+if [ "$KEEP_DIR" != true ]; then
+    log_step "删除部署目录..."
+    if [ -d "$DEPLOY_DIR" ]; then
+        rm -rf "$DEPLOY_DIR"
+        log_info "已删除 $DEPLOY_DIR"
+    else
+        log_info "$DEPLOY_DIR 不存在"
+    fi
 else
-    log_info "$DEPLOY_DIR 不存在"
+    log_info "保留部署目录 (--keep-dir)"
 fi
 
 # ========================= 完成 =========================

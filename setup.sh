@@ -917,7 +917,7 @@ main() {
     log_step "清理旧状态（避免重复启动冲突）..."
     if [ -x "${DEPLOY_DIR}/uninstall.sh" ]; then
         log_info "执行卸载脚本..."
-        cd "$DEPLOY_DIR" && bash -x ./uninstall.sh --force
+        cd "$DEPLOY_DIR" && bash -x ./uninstall.sh --force --keep-dir
     else
         log_warn "未找到卸载脚本，尝试直接停止容器..."
         cd "$DEPLOY_DIR" && $COMPOSE_CMD down -v --remove-orphans 2>/dev/null || true
