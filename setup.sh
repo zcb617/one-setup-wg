@@ -887,10 +887,6 @@ load_images() {
         if [ -f "${IMAGE_DIR}/${tar}" ]; then
             log_info "发现 ${IMAGE_DIR}/${tar}，正在加载..."
             docker load -i "${IMAGE_DIR}/${tar}"
-            # docker load 后标签可能为 phantun:0.8.1，需重命名为 zcb617/phantun:0.8.1
-            if [ "$tar" = "phantun.tar" ] && [ "$tag" = "zcb617/phantun:0.8.1" ]; then
-                docker tag phantun:0.8.1 zcb617/phantun:0.8.1
-            fi
             if ! docker image inspect "$tag" &>/dev/null; then
                 log_error "加载 $tar 失败"
                 exit 1
