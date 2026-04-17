@@ -478,6 +478,10 @@ iptables -t nat -C POSTROUTING -s \${WG_SUBNET} -o \${NAT_IFACE} -j MASQUERADE 2
 iptables -C FORWARD -i wg0 -j ACCEPT 2>/dev/null || iptables -A FORWARD -i wg0 -j ACCEPT
 iptables -C FORWARD -o wg0 -j ACCEPT 2>/dev/null || iptables -A FORWARD -o wg0 -j ACCEPT
 
+# TCP MSS clamping（防止隧道内 TCP 握手问题）
+iptables -C FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null || iptables -A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
+ip6tables -C FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null || ip6tables -A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
+
 # ip route: 客户端 IP 段加入自定义路由表
 ip route add \${WG_SUBNET} dev wg0 table ${TABLE_ID} 2>/dev/null || true
 
@@ -507,6 +511,10 @@ echo "[wg-down] Cleaning up NAT and routing for \${WG_SUBNET}"
 iptables -t nat -D POSTROUTING -s \${WG_SUBNET} -o \${NAT_IFACE} -j MASQUERADE 2>/dev/null
 iptables -D FORWARD -i wg0 -j ACCEPT 2>/dev/null
 iptables -D FORWARD -o wg0 -j ACCEPT 2>/dev/null
+
+# 清理 TCP MSS clamping
+iptables -D FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null
+ip6tables -D FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null
 
 # 清理 ip route
 ip route del \${WG_SUBNET} dev wg0 table ${TABLE_ID} 2>/dev/null
@@ -908,6 +916,9 @@ main() {
 
     log_step "清理旧状态（避免重复启动冲突）..."
     cd "$DEPLOY_DIR" && $COMPOSE_CMD down 2>/dev/null || true
+
+    # host 模式下容器停止不会自动清理宿主机 wg0 接口，手动删除
+    ip link del wg0 2>/dev/null || true
 
     start_services
 
