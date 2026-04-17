@@ -23,6 +23,10 @@ DEFAULT_IMAGE_DIR="$(pwd)"
 DEFAULT_ADMIN_USER="admin"
 DEFAULT_ADMIN_PASS="admin"
 
+# Phantun UDP-to-TCP obfuscation（默认关闭）
+DEFAULT_PHANTUN_ENABLE="false"
+DEFAULT_PHANTUN_PORT="65000"
+
 # 客户端默认 AllowedIPs
 DEFAULT_PEER_ALLOWED_IPS="0.0.0.0/0"
 
@@ -79,6 +83,13 @@ interactive_setup() {
     ADMIN_USER=$(read_input "Web UI 用户名" "$DEFAULT_ADMIN_USER")
     ADMIN_PASS=$(read_input "Web UI 密码" "$DEFAULT_ADMIN_PASS")
 
+    PHANTUN_ENABLE=$(read_input "启用 Phantun UDP-to-TCP (true/false)" "$DEFAULT_PHANTUN_ENABLE")
+    if [ "${PHANTUN_ENABLE}" = "true" ]; then
+        PHANTUN_PORT=$(read_input "Phantun TCP 监听端口" "$DEFAULT_PHANTUN_PORT")
+    else
+        PHANTUN_PORT=""
+    fi
+
     DEPLOY_DIR=$(read_input "部署目录" "$DEFAULT_DEPLOY_DIR")
     IMAGE_DIR=$(read_input "镜像 tar 文件目录" "$DEFAULT_IMAGE_DIR")
     # 展开 ~ 为实际路径
@@ -103,6 +114,11 @@ interactive_setup() {
     fi
     echo "  初始客户端数:     ${PEER_COUNT}"
     echo "  客户端 AllowedIPs: (共 $(echo "$PEER_ALLOWED_IPS" | tr ',' '\n' | wc -l) 条路由)"
+    if [ "${PHANTUN_ENABLE}" = "true" ]; then
+        echo "  Phantun:          启用 (TCP ${PHANTUN_PORT})"
+    else
+        echo "  Phantun:          未启用"
+    fi
     echo "  部署目录:         ${DEPLOY_DIR}"
     echo "  镜像目录:         ${IMAGE_DIR}"
     echo "============================================="
@@ -573,6 +589,27 @@ services:
       - wireguard
 EOF
 
+    if [ "${PHANTUN_ENABLE}" = "true" ]; then
+        cat >> "${DEPLOY_DIR}/docker-compose.yml" << EOF
+
+  phantun:
+    image: dndx/phantun:latest
+    container_name: phantun
+    cap_add:
+      - NET_ADMIN
+    network_mode: host
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    environment:
+      - USE_IPTABLES_NFT_BACKEND=0
+      - RUST_LOG=INFO
+    command: phantun_server --local ${PHANTUN_PORT} --remote 127.0.0.1:${WG_PORT} --ipv4-only
+    restart: unless-stopped
+    depends_on:
+      - wireguard
+EOF
+    fi
+
     log_info "生成 docker-compose.yml"
 }
 
@@ -719,6 +756,16 @@ verify_deployment() {
         echo -e "${YELLOW}无响应 (可能还在启动)${NC}"
     fi
 
+    # 检查 phantun（如启用）
+    if [ "${PHANTUN_ENABLE}" = "true" ]; then
+        echo -n "  phantun (${PHANTUN_PORT}/tcp): "
+        if docker ps | grep -q "phantun"; then
+            echo -e "${GREEN}运行中${NC}"
+        else
+            echo -e "${YELLOW}未运行${NC}"
+        fi
+    fi
+
     echo ""
     if $ok; then
         echo -e "${GREEN}============================================="
@@ -734,6 +781,12 @@ verify_deployment() {
     echo "  访问地址:"
     echo "    Web UI: http://$(hostname -I | awk '{print $1}'):${WEB_PORT}"
     echo "    wg-api: http://127.0.0.1:${API_PORT}"
+    if [ "${PHANTUN_ENABLE}" = "true" ]; then
+        echo ""
+        echo "  Phantun 已启用:"
+        echo "    TCP 端口: ${PHANTUN_PORT} (fake TCP -> UDP ${WG_PORT})"
+        echo "    客户端命令: phantun_client --local 127.0.0.1:${WG_PORT} --remote <服务器IP>:${PHANTUN_PORT} --ipv4-only"
+    fi
     echo ""
     echo "  配置文件:"
     echo "    wg0.conf:   ${DEPLOY_DIR}/wireguard/config/wg0.conf"
@@ -745,6 +798,9 @@ verify_deployment() {
     echo "    docker logs wireguard"
     echo "    docker logs wg-api"
     echo "    docker logs wg-gen-web"
+    if [ "${PHANTUN_ENABLE}" = "true" ]; then
+        echo "    docker logs phantun"
+    fi
     echo ""
 
 }
@@ -776,7 +832,11 @@ show_download_info() {
     fi
 
     echo ""
-    echo "  下载后，将 wg-api.tar、wg-gen-web.tar 和 ubuntu-24.04.tar 放到："
+    if [ "${PHANTUN_ENABLE:-false}" = "true" ]; then
+        echo "  下载后，将 wg-api.tar、wg-gen-web.tar、one-step-wg.tar 和 phantun.tar 放到："
+    else
+        echo "  下载后，将 wg-api.tar、wg-gen-web.tar 和 one-step-wg.tar 放到："
+    fi
     echo "    ${target_dir}"
     echo ""
 }
@@ -804,6 +864,14 @@ load_images() {
         log_info "one-step-wg:0.0.3 已存在"
     else
         missing_images+=("one-step-wg:0.0.3|one-step-wg.tar")
+    fi
+
+    if [ "${PHANTUN_ENABLE}" = "true" ]; then
+        if docker image inspect "dndx/phantun:latest" &>/dev/null; then
+            log_info "dndx/phantun:latest 已存在"
+        else
+            missing_images+=("dndx/phantun:latest|phantun.tar")
+        fi
     fi
 
     # 全部存在，直接返回
