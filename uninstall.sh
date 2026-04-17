@@ -35,7 +35,7 @@ if [ "$FORCE" != true ]; then
     echo "============================================="
     echo ""
     echo "  将删除以下内容："
-    echo "    - Docker 容器: wireguard, wg-api, wg-gen-web"
+    echo "    - Docker 容器: wireguard, wg-api, wg-gen-web, phantun"
     echo "    - WireGuard 接口 wg0"
     echo "    - iptables MASQUERADE / FORWARD 规则"
     echo "    - ip route 自定义路由表 (table 9999)"
@@ -87,6 +87,12 @@ if [ -d "$DEPLOY_DIR" ]; then
     log_info "容器已删除"
 else
     log_info "部署目录不存在，跳过容器清理"
+fi
+
+# 单独清理 phantun（可能通过 docker run 手动启动过）
+if docker ps -a --format '{{.Names}}' | grep -q '^phantun$'; then
+    docker rm -f phantun 2>/dev/null || true
+    log_info "phantun 容器已删除"
 fi
 
 # ========================= 删除 WireGuard 接口 =========================
@@ -146,5 +152,6 @@ echo ""
 echo "  如不再需要，可手动删除镜像："
 echo "    docker rmi lscr.io/linuxserver/wireguard"
 echo "    docker rmi james/wg-api"
+echo "    docker rmi zcb617/phantun:0.8.1"
 echo "    docker rmi vx3r/wg-gen-web"
 echo ""
