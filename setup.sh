@@ -970,6 +970,10 @@ main() {
         log_warn "未找到卸载脚本，尝试直接停止容器..."
         cd "$DEPLOY_DIR" && $COMPOSE_CMD down -v --remove-orphans 2>/dev/null || true
         ip link del wg0 2>/dev/null || true
+        # 单独清理 phantun（与 uninstall.sh 保持一致）
+        if docker ps -a --format '{{.Names}}' | grep -q '^phantun$'; then
+            docker rm -f phantun 2>/dev/null || true
+        fi
     fi
 
     log_step "生成配置文件..."
