@@ -42,8 +42,9 @@ if [ "$FORCE" != true ]; then
     echo "    - /etc/iproute2/rt_tables.d/wg.conf"
     echo "    - 部署目录 (默认 /opt/one-step-wg)"
     echo ""
-    read -rp "确认卸载? 所有配置将被删除 (yes/N): " confirm
-    if [[ "$confirm" != "yes" ]]; then
+    read -rp "确认卸载? 所有配置将被删除 (y/N): " confirm
+    confirm=$(echo "$confirm" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
+    if [[ "$confirm" != "y" ]]; then
         echo "已取消。"
         exit 0
     fi
