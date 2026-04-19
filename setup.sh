@@ -30,6 +30,11 @@ DEFAULT_PHANTUN_PORT="65000"
 # 客户端默认 AllowedIPs
 DEFAULT_PEER_ALLOWED_IPS="0.0.0.0/0"
 
+# DNSCrypt（默认关闭）
+DEFAULT_DNSCRYPT_ENABLE="false"
+DEFAULT_DNSCRYPT_NAME="dns.local"
+DEFAULT_DNSCRYPT_PORT="5443"
+
 # ========================= 颜色输出 =========================
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -90,6 +95,15 @@ interactive_setup() {
         PHANTUN_PORT=""
     fi
 
+    DNSCRYPT_ENABLE=$(read_input "启用 DNSCrypt (true/false)" "$DEFAULT_DNSCRYPT_ENABLE")
+    if [ "${DNSCRYPT_ENABLE}" = "true" ]; then
+        DNSCRYPT_NAME=$(read_input "DNSCrypt Provider Name" "$DEFAULT_DNSCRYPT_NAME")
+        DNSCRYPT_PORT=$(read_input "DNSCrypt 监听端口" "$DEFAULT_DNSCRYPT_PORT")
+    else
+        DNSCRYPT_NAME=""
+        DNSCRYPT_PORT=""
+    fi
+
     DEPLOY_DIR=$(read_input "部署目录" "$DEFAULT_DEPLOY_DIR")
     IMAGE_DIR=$(read_input "镜像 tar 文件目录" "$DEFAULT_IMAGE_DIR")
     # 展开 ~ 为实际路径
@@ -118,6 +132,11 @@ interactive_setup() {
         echo "  Phantun:          启用 (TCP ${PHANTUN_PORT})"
     else
         echo "  Phantun:          未启用"
+    fi
+    if [ "${DNSCRYPT_ENABLE}" = "true" ]; then
+        echo "  DNSCrypt:         启用 (${DNSCRYPT_NAME} @ ${WG_SERVER_IP}:${DNSCRYPT_PORT})"
+    else
+        echo "  DNSCrypt:         未启用"
     fi
     echo "  部署目录:         ${DEPLOY_DIR}"
     echo "  镜像目录:         ${IMAGE_DIR}"
@@ -610,6 +629,22 @@ EOF
 EOF
     fi
 
+    if [ "${DNSCRYPT_ENABLE}" = "true" ]; then
+        cat >> "${DEPLOY_DIR}/docker-compose.yml" << EOF
+
+  dnscrypt:
+    image: jedisct1/dnscrypt-server:latest
+    container_name: dnscrypt
+    network_mode: host
+    volumes:
+      - ./dnscrypt/keys:/opt/encrypted-dns/etc/keys
+    restart: unless-stopped
+    command: start
+    depends_on:
+      - wireguard
+EOF
+    fi
+
     log_info "生成 docker-compose.yml"
 }
 
@@ -766,6 +801,16 @@ verify_deployment() {
         fi
     fi
 
+    # 检查 dnscrypt（如启用）
+    if [ "${DNSCRYPT_ENABLE}" = "true" ]; then
+        echo -n "  dnscrypt (${DNSCRYPT_PORT}/udp+tcp): "
+        if docker ps | grep -q "dnscrypt"; then
+            echo -e "${GREEN}运行中${NC}"
+        else
+            echo -e "${YELLOW}未运行${NC}"
+        fi
+    fi
+
     echo ""
     if $ok; then
         echo -e "${GREEN}============================================="
@@ -787,6 +832,13 @@ verify_deployment() {
         echo "    TCP 端口: ${PHANTUN_PORT} (fake TCP -> UDP ${WG_PORT})"
         echo "    客户端命令: phantun_client --local 127.0.0.1:${WG_PORT} --remote <服务器IP>:${PHANTUN_PORT} --ipv4-only"
     fi
+    if [ "${DNSCRYPT_ENABLE}" = "true" ]; then
+        echo ""
+        echo "  DNSCrypt 已启用:"
+        echo "    Provider: ${DNSCRYPT_NAME}"
+        echo "    连接地址: ${WG_SERVER_IP}:${DNSCRYPT_PORT}"
+        echo "    通过 WG 隧道连接后，dnscrypt-proxy 配置服务器为: ${WG_SERVER_IP}:${DNSCRYPT_PORT}"
+    fi
     echo ""
     echo "  配置文件:"
     echo "    wg0.conf:   ${DEPLOY_DIR}/wireguard/config/wg0.conf"
@@ -800,6 +852,9 @@ verify_deployment() {
     echo "    docker logs wg-gen-web"
     if [ "${PHANTUN_ENABLE}" = "true" ]; then
         echo "    docker logs phantun"
+    fi
+    if [ "${DNSCRYPT_ENABLE}" = "true" ]; then
+        echo "    docker logs dnscrypt"
     fi
     echo ""
 
@@ -995,6 +1050,22 @@ main() {
     generate_up_script
     generate_down_script
     generate_docker_compose
+
+    # DNSCrypt 首次初始化（生成密钥）
+    if [ "${DNSCRYPT_ENABLE}" = "true" ]; then
+        local dnscrypt_keys="${DEPLOY_DIR}/dnscrypt/keys"
+        mkdir -p "${dnscrypt_keys}"
+        if [ ! -f "${dnscrypt_keys}/provider_name" ]; then
+            log_step "初始化 DNSCrypt 密钥..."
+            docker run --rm \
+                -v "${dnscrypt_keys}:/opt/encrypted-dns/etc/keys" \
+                jedisct1/dnscrypt-server:latest \
+                init -N "${DNSCRYPT_NAME}" -E "${WG_SERVER_IP}:${DNSCRYPT_PORT}"
+            log_info "DNSCrypt 密钥已生成: ${dnscrypt_keys}"
+        else
+            log_info "DNSCrypt 密钥已存在，跳过初始化"
+        fi
+    fi
 
     start_services
 
