@@ -1,3 +1,6 @@
 [submodule "vendor/wg-gen-web"]
 	path = vendor/wg-gen-web
 	url = git@github.com:zcb617/wg-gen-web.git
+[submodule "vendor/phantun"]
+	path = vendor/phantun
+	url = git@github.com:zcb617/phantun-include-nettools.git
