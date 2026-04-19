@@ -887,8 +887,12 @@ show_download_info() {
     fi
 
     echo ""
-    if [ "${PHANTUN_ENABLE:-false}" = "true" ]; then
+    if [ "${PHANTUN_ENABLE:-false}" = "true" ] && [ "${DNSCRYPT_ENABLE:-false}" = "true" ]; then
+        echo "  下载后，将 wg-api.tar、wg-gen-web.tar、one-step-wg.tar、phantun.tar 和 dnscrypt-server.tar 放到："
+    elif [ "${PHANTUN_ENABLE:-false}" = "true" ]; then
         echo "  下载后，将 wg-api.tar、wg-gen-web.tar、one-step-wg.tar 和 phantun.tar 放到："
+    elif [ "${DNSCRYPT_ENABLE:-false}" = "true" ]; then
+        echo "  下载后，将 wg-api.tar、wg-gen-web.tar、one-step-wg.tar 和 dnscrypt-server.tar 放到："
     else
         echo "  下载后，将 wg-api.tar、wg-gen-web.tar 和 one-step-wg.tar 放到："
     fi
@@ -926,6 +930,14 @@ load_images() {
             log_info "zcb617/phantun:0.8.1 已存在"
         else
             missing_images+=("zcb617/phantun:0.8.1|phantun.tar")
+        fi
+    fi
+
+    if [ "${DNSCRYPT_ENABLE}" = "true" ]; then
+        if docker image inspect "jedisct1/dnscrypt-server:latest" &>/dev/null; then
+            log_info "jedisct1/dnscrypt-server:latest 已存在"
+        else
+            missing_images+=("jedisct1/dnscrypt-server:latest|dnscrypt-server.tar")
         fi
     fi
 
@@ -977,6 +989,7 @@ load_images() {
                 wg-gen-web.tar) tag="wg-gen-web:0.0.2" ;;
                 one-step-wg.tar) tag="one-step-wg:0.0.3" ;;
                 phantun.tar) tag="zcb617/phantun:0.8.1" ;;
+                dnscrypt-server.tar) tag="jedisct1/dnscrypt-server:latest" ;;
             esac
             log_info "正在拉取 $tag ..."
             docker pull "$tag" || {
