@@ -24,14 +24,14 @@ DEFAULT_ADMIN_USER="admin"
 DEFAULT_ADMIN_PASS="admin"
 
 # Phantun UDP-to-TCP obfuscation（默认关闭）
-DEFAULT_PHANTUN_ENABLE="false"
+DEFAULT_PHANTUN_ENABLE="n"
 DEFAULT_PHANTUN_PORT="65000"
 
 # 客户端默认 AllowedIPs
 DEFAULT_PEER_ALLOWED_IPS="0.0.0.0/0"
 
 # DNSCrypt（默认关闭）
-DEFAULT_DNSCRYPT_ENABLE="false"
+DEFAULT_DNSCRYPT_ENABLE="n"
 DEFAULT_DNSCRYPT_NAME="dns.local"
 DEFAULT_DNSCRYPT_PORT="5443"
 
@@ -88,17 +88,17 @@ interactive_setup() {
     ADMIN_USER=$(read_input "Web UI 用户名" "$DEFAULT_ADMIN_USER")
     ADMIN_PASS=$(read_input "Web UI 密码" "$DEFAULT_ADMIN_PASS")
 
-    PHANTUN_ENABLE=$(read_input "启用 Phantun UDP-to-TCP (true/false)" "$DEFAULT_PHANTUN_ENABLE")
+    PHANTUN_ENABLE=$(read_input "启用 Phantun UDP-to-TCP (y/n)" "$DEFAULT_PHANTUN_ENABLE")
     PHANTUN_ENABLE=$(echo "$PHANTUN_ENABLE" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
-    if [ "${PHANTUN_ENABLE}" = "true" ]; then
+    if [ "${PHANTUN_ENABLE}" = "y" ]; then
         PHANTUN_PORT=$(read_input "Phantun TCP 监听端口" "$DEFAULT_PHANTUN_PORT")
     else
         PHANTUN_PORT=""
     fi
 
-    DNSCRYPT_ENABLE=$(read_input "启用 DNSCrypt (true/false)" "$DEFAULT_DNSCRYPT_ENABLE")
+    DNSCRYPT_ENABLE=$(read_input "启用 DNSCrypt (y/n)" "$DEFAULT_DNSCRYPT_ENABLE")
     DNSCRYPT_ENABLE=$(echo "$DNSCRYPT_ENABLE" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
-    if [ "${DNSCRYPT_ENABLE}" = "true" ]; then
+    if [ "${DNSCRYPT_ENABLE}" = "y" ]; then
         DNSCRYPT_NAME=$(read_input "DNSCrypt Provider Name" "$DEFAULT_DNSCRYPT_NAME")
         DNSCRYPT_PORT=$(read_input "DNSCrypt 监听端口" "$DEFAULT_DNSCRYPT_PORT")
     else
@@ -130,12 +130,12 @@ interactive_setup() {
     fi
     echo "  初始客户端数:     ${PEER_COUNT}"
     echo "  客户端 AllowedIPs: (共 $(echo "$PEER_ALLOWED_IPS" | tr ',' '\n' | wc -l) 条路由)"
-    if [ "${PHANTUN_ENABLE}" = "true" ]; then
+    if [ "${PHANTUN_ENABLE}" = "y" ]; then
         echo "  Phantun:          启用 (TCP ${PHANTUN_PORT})"
     else
         echo "  Phantun:          未启用"
     fi
-    if [ "${DNSCRYPT_ENABLE}" = "true" ]; then
+    if [ "${DNSCRYPT_ENABLE}" = "y" ]; then
         echo "  DNSCrypt:         启用 (${DNSCRYPT_NAME} @ ${WG_SERVER_IP}:${DNSCRYPT_PORT})"
     else
         echo "  DNSCrypt:         未启用"
@@ -610,7 +610,7 @@ services:
       - wireguard
 EOF
 
-    if [ "${PHANTUN_ENABLE}" = "true" ]; then
+    if [ "${PHANTUN_ENABLE}" = "y" ]; then
         cat >> "${DEPLOY_DIR}/docker-compose.yml" << EOF
 
   phantun:
@@ -631,7 +631,7 @@ EOF
 EOF
     fi
 
-    if [ "${DNSCRYPT_ENABLE}" = "true" ]; then
+    if [ "${DNSCRYPT_ENABLE}" = "y" ]; then
         cat >> "${DEPLOY_DIR}/docker-compose.yml" << EOF
 
   dnscrypt:
@@ -794,7 +794,7 @@ verify_deployment() {
     fi
 
     # 检查 phantun（如启用）
-    if [ "${PHANTUN_ENABLE}" = "true" ]; then
+    if [ "${PHANTUN_ENABLE}" = "y" ]; then
         echo -n "  phantun (${PHANTUN_PORT}/tcp): "
         if docker ps | grep -q "phantun"; then
             echo -e "${GREEN}运行中${NC}"
@@ -804,7 +804,7 @@ verify_deployment() {
     fi
 
     # 检查 dnscrypt（如启用）
-    if [ "${DNSCRYPT_ENABLE}" = "true" ]; then
+    if [ "${DNSCRYPT_ENABLE}" = "y" ]; then
         echo -n "  dnscrypt (${DNSCRYPT_PORT}/udp+tcp): "
         if docker ps | grep -q "dnscrypt"; then
             echo -e "${GREEN}运行中${NC}"
@@ -828,13 +828,13 @@ verify_deployment() {
     echo "  访问地址:"
     echo "    Web UI: http://$(hostname -I | awk '{print $1}'):${WEB_PORT}"
     echo "    wg-api: http://127.0.0.1:${API_PORT}"
-    if [ "${PHANTUN_ENABLE}" = "true" ]; then
+    if [ "${PHANTUN_ENABLE}" = "y" ]; then
         echo ""
         echo "  Phantun 已启用:"
         echo "    TCP 端口: ${PHANTUN_PORT} (fake TCP -> UDP ${WG_PORT})"
         echo "    客户端命令: phantun_client --local 127.0.0.1:${WG_PORT} --remote <服务器IP>:${PHANTUN_PORT} --ipv4-only"
     fi
-    if [ "${DNSCRYPT_ENABLE}" = "true" ]; then
+    if [ "${DNSCRYPT_ENABLE}" = "y" ]; then
         echo ""
         echo "  DNSCrypt 已启用:"
         echo "    Provider: ${DNSCRYPT_NAME}"
@@ -852,10 +852,10 @@ verify_deployment() {
     echo "    docker logs wireguard"
     echo "    docker logs wg-api"
     echo "    docker logs wg-gen-web"
-    if [ "${PHANTUN_ENABLE}" = "true" ]; then
+    if [ "${PHANTUN_ENABLE}" = "y" ]; then
         echo "    docker logs phantun"
     fi
-    if [ "${DNSCRYPT_ENABLE}" = "true" ]; then
+    if [ "${DNSCRYPT_ENABLE}" = "y" ]; then
         echo "    docker logs dnscrypt"
     fi
     echo ""
@@ -889,11 +889,11 @@ show_download_info() {
     fi
 
     echo ""
-    if [ "${PHANTUN_ENABLE:-false}" = "true" ] && [ "${DNSCRYPT_ENABLE:-false}" = "true" ]; then
+    if [ "${PHANTUN_ENABLE:-n}" = "y" ] && [ "${DNSCRYPT_ENABLE:-n}" = "y" ]; then
         echo "  下载后，将 wg-api.tar、wg-gen-web.tar、one-step-wg.tar、phantun.tar 和 dnscrypt-server.tar 放到："
-    elif [ "${PHANTUN_ENABLE:-false}" = "true" ]; then
+    elif [ "${PHANTUN_ENABLE:-n}" = "y" ]; then
         echo "  下载后，将 wg-api.tar、wg-gen-web.tar、one-step-wg.tar 和 phantun.tar 放到："
-    elif [ "${DNSCRYPT_ENABLE:-false}" = "true" ]; then
+    elif [ "${DNSCRYPT_ENABLE:-n}" = "y" ]; then
         echo "  下载后，将 wg-api.tar、wg-gen-web.tar、one-step-wg.tar 和 dnscrypt-server.tar 放到："
     else
         echo "  下载后，将 wg-api.tar、wg-gen-web.tar 和 one-step-wg.tar 放到："
@@ -927,7 +927,7 @@ load_images() {
         missing_images+=("one-step-wg:0.0.3|one-step-wg.tar")
     fi
 
-    if [ "${PHANTUN_ENABLE}" = "true" ]; then
+    if [ "${PHANTUN_ENABLE}" = "y" ]; then
         if docker image inspect "zcb617/phantun:0.8.1" &>/dev/null; then
             log_info "zcb617/phantun:0.8.1 已存在"
         else
@@ -935,7 +935,7 @@ load_images() {
         fi
     fi
 
-    if [ "${DNSCRYPT_ENABLE}" = "true" ]; then
+    if [ "${DNSCRYPT_ENABLE}" = "y" ]; then
         if docker image inspect "jedisct1/dnscrypt-server:latest" &>/dev/null; then
             log_info "jedisct1/dnscrypt-server:latest 已存在"
         else
@@ -1067,7 +1067,7 @@ main() {
     generate_docker_compose
 
     # DNSCrypt 首次初始化（生成密钥）
-    if [ "${DNSCRYPT_ENABLE}" = "true" ]; then
+    if [ "${DNSCRYPT_ENABLE}" = "y" ]; then
         local dnscrypt_keys="${DEPLOY_DIR}/dnscrypt/keys"
         mkdir -p "${dnscrypt_keys}"
         if [ ! -f "${dnscrypt_keys}/provider_name" ]; then
