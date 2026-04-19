@@ -89,6 +89,7 @@ interactive_setup() {
     ADMIN_PASS=$(read_input "Web UI 密码" "$DEFAULT_ADMIN_PASS")
 
     PHANTUN_ENABLE=$(read_input "启用 Phantun UDP-to-TCP (true/false)" "$DEFAULT_PHANTUN_ENABLE")
+    PHANTUN_ENABLE=$(echo "$PHANTUN_ENABLE" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
     if [ "${PHANTUN_ENABLE}" = "true" ]; then
         PHANTUN_PORT=$(read_input "Phantun TCP 监听端口" "$DEFAULT_PHANTUN_PORT")
     else
@@ -96,6 +97,7 @@ interactive_setup() {
     fi
 
     DNSCRYPT_ENABLE=$(read_input "启用 DNSCrypt (true/false)" "$DEFAULT_DNSCRYPT_ENABLE")
+    DNSCRYPT_ENABLE=$(echo "$DNSCRYPT_ENABLE" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
     if [ "${DNSCRYPT_ENABLE}" = "true" ]; then
         DNSCRYPT_NAME=$(read_input "DNSCrypt Provider Name" "$DEFAULT_DNSCRYPT_NAME")
         DNSCRYPT_PORT=$(read_input "DNSCrypt 监听端口" "$DEFAULT_DNSCRYPT_PORT")
