@@ -387,14 +387,14 @@ generate_wg_configs() {
 
     # 生成服务器密钥对（使用容器内 wg 工具，宿主机无需安装 wireguard-tools）
     local server_privkey server_pubkey
-    server_privkey=$(docker run --rm --entrypoint wg zcb617/one-step-wg:0.0.4 genkey)
-    server_pubkey=$(echo "$server_privkey" | docker run --rm --entrypoint wg -i zcb617/one-step-wg:0.0.4 pubkey)
+    server_privkey=$(docker run --rm --entrypoint wg zcb617/one-step-wg:0.0.5 genkey)
+    server_pubkey=$(echo "$server_privkey" | docker run --rm --entrypoint wg -i zcb617/one-step-wg:0.0.5 pubkey)
 
     # 生成初始客户端密钥对
     local client_privkey client_pubkey client_psk client_ip
-    client_privkey=$(docker run --rm --entrypoint wg zcb617/one-step-wg:0.0.4 genkey)
-    client_pubkey=$(echo "$client_privkey" | docker run --rm --entrypoint wg -i zcb617/one-step-wg:0.0.4 pubkey)
-    client_psk=$(docker run --rm --entrypoint wg zcb617/one-step-wg:0.0.4 genpsk)
+    client_privkey=$(docker run --rm --entrypoint wg zcb617/one-step-wg:0.0.5 genkey)
+    client_pubkey=$(echo "$client_privkey" | docker run --rm --entrypoint wg -i zcb617/one-step-wg:0.0.5 pubkey)
+    client_psk=$(docker run --rm --entrypoint wg zcb617/one-step-wg:0.0.5 genpsk)
     client_ip="${WG_SUBNET%.*}.2"
 
     # 保存密钥信息
@@ -490,7 +490,7 @@ Address = ${WG_SERVER_CIDR}
 ListenPort = ${WG_PORT}
 PrivateKey = ${server_privkey}
 MTU = ${WG_MTU}
-Table = ${TABLE_NAME}
+Table = ${TABLE_ID}
 SaveConfig = true
 PostUp = /etc/wireguard/up.d/0000wg0
 PreDown = /etc/wireguard/pre-down.d/0000wg0
@@ -592,8 +592,12 @@ generate_docker_compose() {
     cat > "${DEPLOY_DIR}/docker-compose.yml" << EOF
 services:
   wireguard:
-    image: zcb617/one-step-wg:0.0.4
+    image: zcb617/one-step-wg:0.0.5
     container_name: wireguard
+    entrypoint:
+      - /bin/sh
+      - -lc
+      - rm -f /tmp/wg-shutdown && exec /entrypoint.sh
     cap_add:
       - NET_ADMIN
       - SYS_MODULE
@@ -688,7 +692,7 @@ patch_wg0_conf() {
 
     # 添加 Table（如缺失）
     if ! grep -q "^Table = " "$conf_file"; then
-        sed -i '/^\[Interface\]$/a Table = '${TABLE_NAME} "$conf_file"
+        sed -i '/^\[Interface\]$/a Table = '${TABLE_ID} "$conf_file"
     fi
 
     # 添加 SaveConfig（如缺失）
@@ -914,13 +918,13 @@ show_download_info() {
 
     echo ""
     if [ "${PHANTUN_ENABLE:-n}" = "y" ] && [ "${DNSCRYPT_ENABLE:-n}" = "y" ]; then
-        echo "  下载后，将 wg-api.tar、wg-gen-web.tar、one-step-wg.tar、phantun.tar 和 dnscrypt-server.tar 放到："
+        echo "  下载后，将 wg-api.tar、wg-gen-web.tar、one-step-wg-0.0.5.tar、phantun.tar 和 dnscrypt-server.tar 放到："
     elif [ "${PHANTUN_ENABLE:-n}" = "y" ]; then
-        echo "  下载后，将 wg-api.tar、wg-gen-web.tar、one-step-wg.tar 和 phantun.tar 放到："
+        echo "  下载后，将 wg-api.tar、wg-gen-web.tar、one-step-wg-0.0.5.tar 和 phantun.tar 放到："
     elif [ "${DNSCRYPT_ENABLE:-n}" = "y" ]; then
-        echo "  下载后，将 wg-api.tar、wg-gen-web.tar、one-step-wg.tar 和 dnscrypt-server.tar 放到："
+        echo "  下载后，将 wg-api.tar、wg-gen-web.tar、one-step-wg-0.0.5.tar 和 dnscrypt-server.tar 放到："
     else
-        echo "  下载后，将 wg-api.tar、wg-gen-web.tar 和 one-step-wg.tar 放到："
+        echo "  下载后，将 wg-api.tar、wg-gen-web.tar 和 one-step-wg-0.0.5.tar 放到："
     fi
     echo "    ${target_dir}"
     echo ""
@@ -945,10 +949,10 @@ load_images() {
         missing_images+=("zcb617/wg-gen-web:0.0.3|wg-gen-web.tar")
     fi
 
-    if docker image inspect "zcb617/one-step-wg:0.0.4" &>/dev/null; then
-        log_info "zcb617/one-step-wg:0.0.4 已存在"
+    if docker image inspect "zcb617/one-step-wg:0.0.5" &>/dev/null; then
+        log_info "zcb617/one-step-wg:0.0.5 已存在"
     else
-        missing_images+=("zcb617/one-step-wg:0.0.4|one-step-wg.tar")
+        missing_images+=("zcb617/one-step-wg:0.0.5|one-step-wg-0.0.5.tar")
     fi
 
     if [ "${PHANTUN_ENABLE}" = "y" ]; then
@@ -977,9 +981,10 @@ load_images() {
     for entry in "${missing_images[@]}"; do
         local tag="${entry%%|*}"
         local tar="${entry##*|}"
-        if [ -f "${IMAGE_DIR}/${tar}" ]; then
-            log_info "发现 ${IMAGE_DIR}/${tar}，正在加载..."
-            docker load -i "${IMAGE_DIR}/${tar}"
+        local tar_path="${IMAGE_DIR}/${tar}"
+        if [ -f "$tar_path" ]; then
+            log_info "发现 ${tar_path}，正在加载..."
+            docker load -i "$tar_path"
             if ! docker image inspect "$tag" &>/dev/null; then
                 log_error "加载 $tar 失败"
                 exit 1
@@ -1013,7 +1018,7 @@ load_images() {
             case "$tar" in
                 wg-api.tar) tag="james/wg-api:latest" ;;
                 wg-gen-web.tar) tag="zcb617/wg-gen-web:0.0.3" ;;
-                one-step-wg.tar) tag="zcb617/one-step-wg:0.0.4" ;;
+                one-step-wg-0.0.5.tar) tag="zcb617/one-step-wg:0.0.5" ;;
                 phantun.tar) tag="zcb617/phantun:0.8.1" ;;
                 dnscrypt-server.tar) tag="jedisct1/dnscrypt-server:latest" ;;
             esac

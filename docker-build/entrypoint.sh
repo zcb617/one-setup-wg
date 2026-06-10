@@ -4,6 +4,21 @@ set -e
 CONF_FILE="/etc/wireguard/wg0.conf"
 CONF_DIR="/etc/wireguard"
 PURE_CONF="/tmp/wg0.pure.conf"
+SHUTDOWN_FLAG="/tmp/wg-shutdown"
+
+# 容器重启会复用可写层，需要清理上次优雅停止留下的标记。
+rm -f "$SHUTDOWN_FLAG"
+
+# 清理函数：容器收到 docker stop 的 SIGTERM 时执行
+cleanup() {
+    echo "[entrypoint] Received shutdown signal, stopping wg0..."
+    touch "$SHUTDOWN_FLAG"
+    wg-quick down wg0 2>/dev/null || true
+    # 终止后台 inotifywait 进程
+    pkill -f "inotifywait.*$CONF_DIR" 2>/dev/null || true
+    exit 0
+}
+trap cleanup SIGTERM SIGINT
 
 # 从 wg0.conf 提取纯 WireGuard 配置（只保留 wg 命令能识别的字段）
 # wg 只支持: ListenPort, PrivateKey, FwMark, PublicKey, PresharedKey, AllowedIPs, Endpoint, PersistentKeepalive
@@ -24,6 +39,9 @@ extract_wg_pure_conf() {
 
 # 同步配置到内核
 sync_wg0() {
+    if [ -f "$SHUTDOWN_FLAG" ]; then
+        return
+    fi
     if [ ! -f "$CONF_FILE" ]; then
         echo "[entrypoint] ${CONF_FILE} not found, skipping sync"
         return
@@ -52,7 +70,7 @@ sync_wg0
     while true; do
         if [ -d "$CONF_DIR" ]; then
             # -m 持续监控模式，监听目录内所有文件的变化
-            inotifywait -m -e modify,close_write,moved_to --format '%f' "$CONF_DIR" 2>/dev/null | while read filename; do
+            inotifywait -m -e modify,close_write,moved_to --format '%f' "$CONF_DIR" 2>/dev/null | while read -r filename; do
                 if [ "$filename" = "wg0.conf" ]; then
                     echo "[entrypoint] Detected wg0.conf change, syncing..."
                     sleep 1  # debounce
@@ -67,6 +85,9 @@ sync_wg0
 
 # 主循环：监控 wg0 接口，如果 down 了就重启
 while true; do
+    if [ -f "$SHUTDOWN_FLAG" ]; then
+        break
+    fi
     if ! ip link show wg0 &>/dev/null; then
         echo "[entrypoint] wg0 down, restarting..."
         sync_wg0
