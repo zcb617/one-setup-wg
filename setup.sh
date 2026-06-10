@@ -8,13 +8,13 @@ set -euo pipefail
 
 # ========================= 默认值 =========================
 DEFAULT_WG_SUBNET="10.8.0.0/24"
-DEFAULT_WG_PORT="65001"
+DEFAULT_WG_PORT="25111"
 DEFAULT_WG_DNS="8.8.8.8"
 DEFAULT_WG_MTU="1280"
 DEFAULT_TABLE_NAME="wireguard"
 DEFAULT_TABLE_ID="9999"
-DEFAULT_API_PORT="65002"
-DEFAULT_WEB_PORT="65003"
+DEFAULT_API_PORT="25112"
+DEFAULT_WEB_PORT="25113"
 DEFAULT_OAUTH="file"
 DEFAULT_PEER_COUNT="1"
 DEFAULT_PEER_KEEPALIVE=""
@@ -25,15 +25,17 @@ DEFAULT_ADMIN_PASS="admin"
 
 # Phantun UDP-to-TCP obfuscation（默认关闭）
 DEFAULT_PHANTUN_ENABLE="n"
-DEFAULT_PHANTUN_PORT="65000"
+DEFAULT_PHANTUN_PORT="25115"
+DEFAULT_PHANTUN_CLIENT_LOCAL="127.0.0.1:18181"
 
 # 客户端默认 AllowedIPs
-DEFAULT_PEER_ALLOWED_IPS="0.0.0.0/0"
+DEFAULT_PEER_ALLOWED_IPS="0.0.0.0/1, 128.0.0.0/1"
 
 # DNSCrypt（默认关闭）
 DEFAULT_DNSCRYPT_ENABLE="n"
 DEFAULT_DNSCRYPT_NAME="dns.local"
-DEFAULT_DNSCRYPT_PORT="5443"
+DEFAULT_DNSCRYPT_PORT="25116"
+DEFAULT_DNSCRYPT_UPSTREAM="8.8.8.8"
 
 # ========================= 颜色输出 =========================
 RED='\033[0;31m'
@@ -83,7 +85,7 @@ interactive_setup() {
     PEER_KEEPALIVE="25"
     PEER_ALLOWED_IPS="$DEFAULT_PEER_ALLOWED_IPS"
     # 追加服务器 wg0 IP
-    PEER_ALLOWED_IPS="${PEER_ALLOWED_IPS}, ${WG_SERVER_IP}/32"
+    PEER_ALLOWED_IPS="${WG_SERVER_IP}/32, ${PEER_ALLOWED_IPS}"
 
     ADMIN_USER=$(read_input "Web UI 用户名" "$DEFAULT_ADMIN_USER")
     ADMIN_PASS=$(read_input "Web UI 密码" "$DEFAULT_ADMIN_PASS")
@@ -92,8 +94,10 @@ interactive_setup() {
     PHANTUN_ENABLE=$(echo "$PHANTUN_ENABLE" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
     if [ "${PHANTUN_ENABLE}" = "y" ]; then
         PHANTUN_PORT=$(read_input "Phantun TCP 监听端口" "$DEFAULT_PHANTUN_PORT")
+        PHANTUN_CLIENT_LOCAL=$(read_input "Phantun 客户端本地地址" "$DEFAULT_PHANTUN_CLIENT_LOCAL")
     else
         PHANTUN_PORT=""
+        PHANTUN_CLIENT_LOCAL=""
     fi
 
     DNSCRYPT_ENABLE=$(read_input "启用 DNSCrypt (y/n)" "$DEFAULT_DNSCRYPT_ENABLE")
@@ -101,9 +105,11 @@ interactive_setup() {
     if [ "${DNSCRYPT_ENABLE}" = "y" ]; then
         DNSCRYPT_NAME=$(read_input "DNSCrypt Provider Name" "$DEFAULT_DNSCRYPT_NAME")
         DNSCRYPT_PORT=$(read_input "DNSCrypt 监听端口" "$DEFAULT_DNSCRYPT_PORT")
+        DNSCRYPT_UPSTREAM=$(read_input "DNSCrypt 上游 DNS" "$DEFAULT_DNSCRYPT_UPSTREAM")
     else
         DNSCRYPT_NAME=""
         DNSCRYPT_PORT=""
+        DNSCRYPT_UPSTREAM=""
     fi
 
     DEPLOY_DIR=$(read_input "部署目录" "$DEFAULT_DEPLOY_DIR")
@@ -132,11 +138,13 @@ interactive_setup() {
     echo "  客户端 AllowedIPs: (共 $(echo "$PEER_ALLOWED_IPS" | tr ',' '\n' | wc -l) 条路由)"
     if [ "${PHANTUN_ENABLE}" = "y" ]; then
         echo "  Phantun:          启用 (TCP ${PHANTUN_PORT})"
+        echo "  Phantun 客户端:   ${PHANTUN_CLIENT_LOCAL}"
     else
         echo "  Phantun:          未启用"
     fi
     if [ "${DNSCRYPT_ENABLE}" = "y" ]; then
         echo "  DNSCrypt:         启用 (${DNSCRYPT_NAME} @ ${WG_SERVER_IP}:${DNSCRYPT_PORT})"
+        echo "  DNSCrypt 上游:    ${DNSCRYPT_UPSTREAM}"
     else
         echo "  DNSCrypt:         未启用"
     fi
@@ -377,16 +385,16 @@ generate_wg_configs() {
     local config_dir="${DEPLOY_DIR}/wireguard/config"
     mkdir -p "$config_dir"
 
-    # 生成服务器密钥对
+    # 生成服务器密钥对（使用容器内 wg 工具，宿主机无需安装 wireguard-tools）
     local server_privkey server_pubkey
-    server_privkey=$(wg genkey)
-    server_pubkey=$(echo "$server_privkey" | wg pubkey)
+    server_privkey=$(docker run --rm --entrypoint wg zcb617/one-step-wg:0.0.4 genkey)
+    server_pubkey=$(echo "$server_privkey" | docker run --rm --entrypoint wg -i zcb617/one-step-wg:0.0.4 pubkey)
 
     # 生成初始客户端密钥对
     local client_privkey client_pubkey client_psk client_ip
-    client_privkey=$(wg genkey)
-    client_pubkey=$(echo "$client_privkey" | wg pubkey)
-    client_psk=$(wg genpsk)
+    client_privkey=$(docker run --rm --entrypoint wg zcb617/one-step-wg:0.0.4 genkey)
+    client_pubkey=$(echo "$client_privkey" | docker run --rm --entrypoint wg -i zcb617/one-step-wg:0.0.4 pubkey)
+    client_psk=$(docker run --rm --entrypoint wg zcb617/one-step-wg:0.0.4 genpsk)
     client_ip="${WG_SUBNET%.*}.2"
 
     # 保存密钥信息
@@ -399,13 +407,24 @@ generate_wg_configs() {
 # 客户端 1 PSK: ${client_psk}
 EOF
 
-    local server_external_ip
-    server_external_ip=$(curl -s ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}')
+    # 格式化 endpoint：IPv6 需要加方括号
+    local server_endpoint
+    if [[ "$SERVER_EXTERNAL_IP" =~ : ]]; then
+        server_endpoint="[${SERVER_EXTERNAL_IP}]:${WG_PORT}"
+    else
+        server_endpoint="${SERVER_EXTERNAL_IP}:${WG_PORT}"
+    fi
 
     local now
     now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
     # 1. 生成 server.json（wg-gen-web 的配置源）
+    # Phantun 启用时，客户端 Endpoint 指向本地代理地址
+    local peer_endpoint="${server_endpoint}"
+    if [ "${PHANTUN_ENABLE}" = "y" ]; then
+        peer_endpoint="${PHANTUN_CLIENT_LOCAL}"
+    fi
+
     local server_allowed_ips_json
     server_allowed_ips_json=$(ips_to_json_array "$PEER_ALLOWED_IPS")
     cat > "${config_dir}/server.json" << EOF
@@ -415,7 +434,7 @@ EOF
   "mtu": ${WG_MTU},
   "privateKey": "${server_privkey}",
   "publicKey": "${server_pubkey}",
-  "endpoint": "${server_external_ip}:${WG_PORT}",
+  "endpoint": "${peer_endpoint}",
   "persistentKeepalive": ${PEER_KEEPALIVE},
   "dns": ["${WG_DNS}"],
   "allowedips": ${server_allowed_ips_json},
@@ -573,7 +592,7 @@ generate_docker_compose() {
     cat > "${DEPLOY_DIR}/docker-compose.yml" << EOF
 services:
   wireguard:
-    image: one-step-wg:0.0.3
+    image: zcb617/one-step-wg:0.0.4
     container_name: wireguard
     cap_add:
       - NET_ADMIN
@@ -594,7 +613,7 @@ services:
     restart: unless-stopped
 
   wg-gen-web:
-    image: wg-gen-web:0.0.2
+    image: zcb617/wg-gen-web:0.0.3
     container_name: wg-gen-web
     environment:
       - WG_CONF_DIR=/config
@@ -605,6 +624,15 @@ services:
       - "${WEB_PORT}:8080"
     volumes:
       - ./wireguard/config:/config
+EOF
+
+    if [ "${DNSCRYPT_ENABLE}" = "y" ]; then
+        cat >> "${DEPLOY_DIR}/docker-compose.yml" << EOF
+      - ./dnscrypt/keys:/config/dnscrypt/keys:ro
+EOF
+    fi
+
+    cat >> "${DEPLOY_DIR}/docker-compose.yml" << EOF
     restart: unless-stopped
     depends_on:
       - wireguard
@@ -616,11 +644,8 @@ EOF
   phantun:
     image: zcb617/phantun:0.8.1
     container_name: phantun
-    cap_add:
-      - NET_ADMIN
+    privileged: true
     network_mode: host
-    devices:
-      - /dev/net/tun:/dev/net/tun
     environment:
       - USE_IPTABLES_NFT_BACKEND=0
       - RUST_LOG=INFO
@@ -826,13 +851,12 @@ verify_deployment() {
 
     echo ""
     echo "  访问地址:"
-    echo "    Web UI: http://$(hostname -I | awk '{print $1}'):${WEB_PORT}"
-    echo "    wg-api: http://127.0.0.1:${API_PORT}"
+    echo "    Web UI: http://${SERVER_EXTERNAL_IP}:${WEB_PORT}"
     if [ "${PHANTUN_ENABLE}" = "y" ]; then
         echo ""
         echo "  Phantun 已启用:"
         echo "    TCP 端口: ${PHANTUN_PORT} (fake TCP -> UDP ${WG_PORT})"
-        echo "    客户端命令: phantun_client --local 127.0.0.1:${WG_PORT} --remote <服务器IP>:${PHANTUN_PORT} --ipv4-only"
+        echo "    客户端命令: phantun_client --local 127.0.0.1:${WG_PORT} --remote ${SERVER_EXTERNAL_IP}:${PHANTUN_PORT} --ipv4-only"
     fi
     if [ "${DNSCRYPT_ENABLE}" = "y" ]; then
         echo ""
@@ -915,16 +939,16 @@ load_images() {
         missing_images+=("james/wg-api:latest|wg-api.tar")
     fi
 
-    if docker image inspect "wg-gen-web:0.0.2" &>/dev/null; then
-        log_info "wg-gen-web:0.0.2 已存在"
+    if docker image inspect "zcb617/wg-gen-web:0.0.3" &>/dev/null; then
+        log_info "zcb617/wg-gen-web:0.0.3 已存在"
     else
-        missing_images+=("wg-gen-web:0.0.2|wg-gen-web.tar")
+        missing_images+=("zcb617/wg-gen-web:0.0.3|wg-gen-web.tar")
     fi
 
-    if docker image inspect "one-step-wg:0.0.3" &>/dev/null; then
-        log_info "one-step-wg:0.0.3 已存在"
+    if docker image inspect "zcb617/one-step-wg:0.0.4" &>/dev/null; then
+        log_info "zcb617/one-step-wg:0.0.4 已存在"
     else
-        missing_images+=("one-step-wg:0.0.3|one-step-wg.tar")
+        missing_images+=("zcb617/one-step-wg:0.0.4|one-step-wg.tar")
     fi
 
     if [ "${PHANTUN_ENABLE}" = "y" ]; then
@@ -988,8 +1012,8 @@ load_images() {
             local tag=""
             case "$tar" in
                 wg-api.tar) tag="james/wg-api:latest" ;;
-                wg-gen-web.tar) tag="wg-gen-web:0.0.2" ;;
-                one-step-wg.tar) tag="one-step-wg:0.0.3" ;;
+                wg-gen-web.tar) tag="zcb617/wg-gen-web:0.0.3" ;;
+                one-step-wg.tar) tag="zcb617/one-step-wg:0.0.4" ;;
                 phantun.tar) tag="zcb617/phantun:0.8.1" ;;
                 dnscrypt-server.tar) tag="jedisct1/dnscrypt-server:latest" ;;
             esac
@@ -1017,6 +1041,10 @@ main() {
     check_os
     interactive_setup
 
+    log_step "获取服务器公网地址..."
+    SERVER_EXTERNAL_IP=$(curl -4s --max-time 5 ifconfig.me 2>/dev/null || curl -4s --max-time 5 ip.sb 2>/dev/null || hostname -I | awk '{print $1}')
+    log_info "服务器公网地址: ${SERVER_EXTERNAL_IP}"
+
     log_step "检查 Docker..."
     check_docker
 
@@ -1030,12 +1058,19 @@ main() {
 
     log_step "清理旧状态（避免重复启动冲突）..."
     if [ -x "${SCRIPT_DIR}/uninstall.sh" ]; then
-        log_info "执行卸载脚本..."
+        log_info "执行本地卸载脚本..."
         bash -x "${SCRIPT_DIR}/uninstall.sh" --force
     else
-        log_warn "未找到卸载脚本，尝试直接停止容器..."
-        cd "$DEPLOY_DIR" && $COMPOSE_CMD down -v --remove-orphans 2>/dev/null || true
-        ip link del wg0 2>/dev/null || true
+        local remote_uninstall="https://download.0573zzz.dpdns.org/uninstall.sh"
+        log_warn "本地未找到卸载脚本，尝试从 ${remote_uninstall} 下载..."
+        if curl -fsSL --max-time 10 "${remote_uninstall}" -o "${SCRIPT_DIR}/uninstall.sh" 2>/dev/null; then
+            chmod +x "${SCRIPT_DIR}/uninstall.sh"
+            bash -x "${SCRIPT_DIR}/uninstall.sh" --force
+        else
+            log_warn "下载卸载脚本失败，尝试直接停止容器..."
+            (cd "$DEPLOY_DIR" 2>/dev/null && $COMPOSE_CMD down -v --remove-orphans 2>/dev/null) || true
+            ip link del wg0 2>/dev/null || true
+        fi
     fi
 
     log_step "生成配置文件..."
@@ -1079,6 +1114,14 @@ main() {
             log_info "DNSCrypt 密钥已生成: ${dnscrypt_keys}"
         else
             log_info "DNSCrypt 密钥已存在，跳过初始化"
+        fi
+
+        # 配置 DNSCrypt 上游 DNS
+        local dnscrypt_toml="${dnscrypt_keys}/encrypted-dns.toml"
+        if [ -f "${dnscrypt_toml}" ]; then
+            # encrypted-dns.toml 使用 upstream_addr = "host:port" 格式
+            sed -i "s/^upstream_addr = .*/upstream_addr = \"${DNSCRYPT_UPSTREAM}:53\"/" "${dnscrypt_toml}"
+            log_info "DNSCrypt 上游 DNS 已配置: ${DNSCRYPT_UPSTREAM}:53"
         fi
     fi
 
