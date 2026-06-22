@@ -525,8 +525,9 @@ generate_up_script() {
 # WireGuard up 脚本 - 配置 NAT 和路由
 WG_SUBNET="${WG_SUBNET}"
 NAT_IFACE="\$(ip route show default | awk '/default/ {print \$5; exit}')"
+IPTABLES_BACKEND="\$(iptables --version 2>/dev/null | awk '{print \$2, \$3}')"
 
-echo "[wg-up] Configuring NAT and routing for \${WG_SUBNET} via \${NAT_IFACE}"
+echo "[wg-up] Configuring NAT and routing for \${WG_SUBNET} via \${NAT_IFACE} (\${IPTABLES_BACKEND})"
 
 # iptables NAT 规则（幂等：先检查再添加）
 iptables -t nat -C POSTROUTING -s \${WG_SUBNET} -o \${NAT_IFACE} -j MASQUERADE 2>/dev/null || \\
@@ -560,8 +561,9 @@ generate_down_script() {
 # WireGuard down 脚本 - 清理 NAT 和路由
 WG_SUBNET="${WG_SUBNET}"
 NAT_IFACE="\$(ip route show default | awk '/default/ {print \$5; exit}')"
+IPTABLES_BACKEND="\$(iptables --version 2>/dev/null | awk '{print \$2, \$3}')"
 
-echo "[wg-down] Cleaning up NAT and routing for \${WG_SUBNET}"
+echo "[wg-down] Cleaning up NAT and routing for \${WG_SUBNET} (\${IPTABLES_BACKEND})"
 
 # 清理 iptables
 iptables -t nat -D POSTROUTING -s \${WG_SUBNET} -o \${NAT_IFACE} -j MASQUERADE 2>/dev/null
@@ -690,14 +692,24 @@ patch_wg0_conf() {
     sed -i '/^PreUp = $/d' "$conf_file"
     sed -i '/^PostDown = $/d' "$conf_file"
 
-    # 添加 Table（如缺失）
-    if ! grep -q "^Table = " "$conf_file"; then
-        sed -i '/^\[Interface\]$/a Table = '${TABLE_ID} "$conf_file"
+    # 补回 wg-gen-web 可能覆盖掉的关键指令。
+    # 这里按相反顺序插入，保证最终在 [Interface] 下的顺序稳定。
+    if ! grep -q "^PreDown = /etc/wireguard/pre-down.d/0000wg0$" "$conf_file"; then
+        sed -i '/^\[Interface\]$/a PreDown = /etc/wireguard/pre-down.d/0000wg0' "$conf_file"
+    fi
+
+    if ! grep -q "^PostUp = /etc/wireguard/up.d/0000wg0$" "$conf_file"; then
+        sed -i '/^\[Interface\]$/a PostUp = /etc/wireguard/up.d/0000wg0' "$conf_file"
     fi
 
     # 添加 SaveConfig（如缺失）
     if ! grep -q "^SaveConfig = " "$conf_file"; then
         sed -i '/^\[Interface\]$/a SaveConfig = true' "$conf_file"
+    fi
+
+    # 添加 Table（如缺失）
+    if ! grep -q "^Table = " "$conf_file"; then
+        sed -i '/^\[Interface\]$/a Table = '${TABLE_ID} "$conf_file"
     fi
 
     log_info "已修正 wg0.conf"
@@ -796,12 +808,22 @@ verify_deployment() {
         echo -e "${YELLOW}未找到 (PostUp 可能还未执行)${NC}"
     fi
 
-    # 检查 iptables
+    # 检查 iptables / nft 后端
     echo -n "  iptables MASQUERADE: "
-    if iptables -t nat -L POSTROUTING -n 2>/dev/null | grep -q "MASQUERADE"; then
-        echo -e "${GREEN}存在${NC}"
+    local iptables_found=""
+    local iptables_backend=""
+    for cmd in iptables iptables-nft iptables-legacy; do
+        if command -v "$cmd" >/dev/null 2>&1 && \
+           "$cmd" -t nat -L POSTROUTING -n 2>/dev/null | grep -q "MASQUERADE"; then
+            iptables_found="yes"
+            iptables_backend="$cmd"
+            break
+        fi
+    done
+    if [ -n "$iptables_found" ]; then
+        echo -e "${GREEN}存在${NC} (${iptables_backend})"
     else
-        echo -e "${YELLOW}未找到 (PostUp 可能还未执行)${NC}"
+        echo -e "${YELLOW}未找到 (PostUp 可能还未执行，或规则在其他后端)${NC}"
     fi
 
     # 检查 wg-api (通过 wireguard 容器网络命名空间访问)
