@@ -13,9 +13,9 @@ rm -f "$SHUTDOWN_FLAG"
 cleanup() {
     echo "[entrypoint] Received shutdown signal, stopping wg0..."
     touch "$SHUTDOWN_FLAG"
-    wg-quick down wg0 2>/dev/null || true
+    wg-quick down wg0 
     # 终止后台 inotifywait 进程
-    pkill -f "inotifywait.*$CONF_DIR" 2>/dev/null || true
+    pkill -f "inotifywait.*$CONF_DIR" 
     exit 0
 }
 trap cleanup SIGTERM SIGINT
@@ -53,12 +53,12 @@ sync_wg0() {
         echo "[entrypoint] Syncing wg0.conf to kernel..."
         if ! wg syncconf wg0 "$PURE_CONF" 2>/dev/null; then
             echo "[entrypoint] wg syncconf failed, trying wg-quick down/up..."
-            wg-quick down wg0 2>/dev/null || true
-            wg-quick up wg0 2>/dev/null || true
+            wg-quick down wg0 
+            wg-quick up wg0 
         fi
     else
         echo "[entrypoint] wg0 not up, starting..."
-        wg-quick up wg0 2>/dev/null || true
+        wg-quick up wg0 
     fi
 }
 

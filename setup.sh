@@ -218,7 +218,7 @@ install_docker() {
     # 1. 卸载旧版本
     log_info "清理旧版本 Docker..."
     for pkg in docker.io docker-doc docker-compose docker-compose-v2 podman-docker containerd runc; do
-        apt-get remove -y "$pkg" 2>/dev/null || true
+        apt-get remove -y "$pkg" 
     done
 
     # 2. 安装依赖
@@ -227,15 +227,15 @@ install_docker() {
 
     # 3. 添加 Docker GPG 密钥
     install -m 0755 -d /etc/apt/keyrings
-    rm -f /etc/apt/keyrings/docker.gpg 2>/dev/null || true
+    rm -f /etc/apt/keyrings/docker.gpg 
     curl -fsSL "https://download.docker.com/linux/${OS_ID}/gpg" | \
-        gpg --dearmor --yes -o /etc/apt/keyrings/docker.gpg 2>/dev/null
+        gpg --dearmor --yes -o /etc/apt/keyrings/docker.gpg 
     chmod a+r /etc/apt/keyrings/docker.gpg
     log_info "Docker GPG 密钥已添加"
 
     # 4. 添加 Docker 源（DEB822 格式）
     local sources_file="/etc/apt/sources.list.d/docker.sources"
-    rm -f "$sources_file" 2>/dev/null || true
+    rm -f "$sources_file" 
     cat > "$sources_file" << EOF
 Types: deb
 URIs: https://download.docker.com/linux/${OS_ID}
@@ -273,9 +273,9 @@ setup_docker_repo() {
 
     # 添加 GPG 密钥
     install -m 0755 -d /etc/apt/keyrings
-    rm -f /etc/apt/keyrings/docker.gpg 2>/dev/null || true
+    rm -f /etc/apt/keyrings/docker.gpg 
     curl -fsSL "https://download.docker.com/linux/${OS_ID}/gpg" | \
-        gpg --dearmor --yes -o /etc/apt/keyrings/docker.gpg 2>/dev/null
+        gpg --dearmor --yes -o /etc/apt/keyrings/docker.gpg 
     chmod a+r /etc/apt/keyrings/docker.gpg
 
     # 添加源（DEB822 格式）
@@ -540,13 +540,13 @@ iptables -C FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
 ip6tables -C FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null || ip6tables -A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
 
 # ip route: 客户端 IP 段加入自定义路由表
-ip route add \${WG_SUBNET} dev wg0 table ${TABLE_ID} 2>/dev/null || true
+ip route add \${WG_SUBNET} dev wg0 table ${TABLE_ID} 
 
-echo "[wg-up] Done"
 UPSCRIPT
 
     # 添加 ip rule（确保流量能使用自定义路由表，幂等检查）
     echo "ip rule show | grep -q \"table ${TABLE_ID}\" || ip rule add from 0.0.0.0/0 table ${TABLE_ID}" >> "${up_dir}/0000wg0"
+    echo "[wg-up] Done" >> "${up_dir}/0000wg0"
 
     chmod +x "${up_dir}/0000wg0"
     log_info "生成 up.d/0000wg0"
@@ -575,12 +575,12 @@ iptables -D FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
 ip6tables -D FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null
 
 # 清理 ip route
-ip route del \${WG_SUBNET} dev wg0 table ${TABLE_ID} 2>/dev/null
+ip route del \${WG_SUBNET} dev wg0 table ${TABLE_ID} 
 
-echo "[wg-down] Done"
 DOWNSCRIPT
 
     echo "ip rule show | grep -q \"table ${TABLE_ID}\" && ip rule del from 0.0.0.0/0 table ${TABLE_ID}" >> "${down_dir}/0000wg0"
+    echo "[wg-down] Done" >> "${down_dir}/0000wg0"
 
     chmod +x "${down_dir}/0000wg0"
     log_info "生成 pre-down.d/0000wg0"
@@ -604,8 +604,6 @@ services:
       - NET_ADMIN
       - SYS_MODULE
     network_mode: host
-    stop_signal: SIGTERM
-    stop_grace_period: 60s
     volumes:
       - ./wireguard/config:/etc/wireguard
       - /etc/iproute2/rt_tables.d:/etc/iproute2/rt_tables.d:ro
@@ -1097,8 +1095,8 @@ main() {
             bash -x "${SCRIPT_DIR}/uninstall.sh" --force
         else
             log_warn "下载卸载脚本失败，尝试直接停止容器..."
-            (cd "$DEPLOY_DIR" 2>/dev/null && $COMPOSE_CMD down -v --remove-orphans 2>/dev/null) || true
-            ip link del wg0 2>/dev/null || true
+            (cd "$DEPLOY_DIR" 2>/dev/null && $COMPOSE_CMD down -v --remove-orphans 2>/dev/null) 
+            ip link del wg0 
         fi
     fi
 
