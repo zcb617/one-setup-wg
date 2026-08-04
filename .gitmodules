@@ -14,3 +14,6 @@
 	path = vendor/phantun-client-mac
 	url = git@github.com:zcb617/phantun-client-mac.git
 	branch = master
+[submodule "vendor/wireguard-apple-phantun-dns"]
+	path = vendor/wireguard-apple-phantun-dns
+	url = git@github.com:zcb617/wireguard-apple-phantun-dns.git
