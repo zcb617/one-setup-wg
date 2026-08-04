@@ -10,3 +10,7 @@
 [submodule "vendor/phantun-client-win"]
 	path = vendor/phantun-client-win
 	url = git@github.com:zcb617/phantun-client-win.git
+[submodule "vendor/phantun-client-mac"]
+	path = vendor/phantun-client-mac
+	url = git@github.com:zcb617/phantun-client-mac.git
+	branch = master
