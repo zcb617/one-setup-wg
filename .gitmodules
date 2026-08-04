@@ -4,3 +4,9 @@
 [submodule "vendor/phantun"]
 	path = vendor/phantun
 	url = git@github.com:zcb617/phantun-include-nettools.git
+[submodule "vendor/wireguard-win-phantun-dns"]
+	path = vendor/wireguard-win-phantun-dns
+	url = git@github.com:zcb617/wireguard-win-phantun-dns.git
+[submodule "vendor/phantun-client-win"]
+	path = vendor/phantun-client-win
+	url = git@github.com:zcb617/phantun-client-win.git
