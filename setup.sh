@@ -37,6 +37,12 @@ DEFAULT_DNSCRYPT_NAME="dns.local"
 DEFAULT_DNSCRYPT_PORT="25116"
 DEFAULT_DNSCRYPT_UPSTREAM="8.8.8.8"
 
+# iptables 后端会在宿主机检测后赋值，并写入容器内执行的脚本。
+HOST_IPTABLES_BACKEND="nft"
+IPTABLES_CMD="iptables-nft"
+IP6TABLES_CMD="ip6tables-nft"
+PHANTUN_USE_NFT_BACKEND="1"
+
 # ========================= 颜色输出 =========================
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -218,7 +224,12 @@ install_docker() {
     # 1. 卸载旧版本
     log_info "清理旧版本 Docker..."
     for pkg in docker.io docker-doc docker-compose docker-compose-v2 podman-docker containerd runc; do
-        apt-get remove -y "$pkg" 
+        if dpkg -s "$pkg" >/dev/null 2>&1; then
+            log_info "卸载旧包: $pkg"
+            apt-get remove -y "$pkg"
+        else
+            log_info "$pkg 未安装，跳过"
+        fi
     done
 
     # 2. 安装依赖
@@ -321,6 +332,36 @@ check_docker() {
         COMPOSE_CMD="docker compose"
         log_info "Compose: $($COMPOSE_CMD version 2>&1)"
     fi
+}
+
+# ========================= iptables 后端检测 =========================
+detect_host_iptables_backend() {
+    log_step "检测宿主机 iptables 后端..."
+
+    local version alt_value
+    version="$(iptables --version 2>/dev/null || true)"
+    alt_value="$(update-alternatives --query iptables 2>/dev/null | awk '/^Value:/ {print $2; exit}' || true)"
+
+    if echo "$version" | grep -qi "legacy" || echo "$alt_value" | grep -qi "legacy"; then
+        HOST_IPTABLES_BACKEND="legacy"
+        IPTABLES_CMD="iptables-legacy"
+        IP6TABLES_CMD="ip6tables-legacy"
+        PHANTUN_USE_NFT_BACKEND="0"
+    elif echo "$version" | grep -qiE "nf_tables|nft" || echo "$alt_value" | grep -qi "nft"; then
+        HOST_IPTABLES_BACKEND="nft"
+        IPTABLES_CMD="iptables-nft"
+        IP6TABLES_CMD="ip6tables-nft"
+        PHANTUN_USE_NFT_BACKEND="1"
+    else
+        HOST_IPTABLES_BACKEND="nft"
+        IPTABLES_CMD="iptables-nft"
+        IP6TABLES_CMD="ip6tables-nft"
+        PHANTUN_USE_NFT_BACKEND="1"
+        log_warn "无法明确识别宿主机 iptables 后端，默认按 nft 处理"
+    fi
+
+    log_info "宿主机 iptables 后端: ${HOST_IPTABLES_BACKEND} (${version:-unknown})"
+    log_info "容器内将使用: ${IPTABLES_CMD} / ${IP6TABLES_CMD}"
 }
 
 # ========================= 宿主机初始化 =========================
@@ -525,19 +566,21 @@ generate_up_script() {
 # WireGuard up 脚本 - 配置 NAT 和路由
 WG_SUBNET="${WG_SUBNET}"
 NAT_IFACE="\$(ip route show default | awk '/default/ {print \$5; exit}')"
-IPTABLES_BACKEND="\$(iptables --version 2>/dev/null | awk '{print \$2, \$3}')"
+IPTABLES_CMD="${IPTABLES_CMD}"
+IP6TABLES_CMD="${IP6TABLES_CMD}"
+IPTABLES_BACKEND="\$("\${IPTABLES_CMD}" --version 2>/dev/null | awk '{print \$2, \$3}')"
 
 echo "[wg-up] Configuring NAT and routing for \${WG_SUBNET} via \${NAT_IFACE} (\${IPTABLES_BACKEND})"
 
 # iptables NAT 规则（幂等：先检查再添加）
-iptables -t nat -C POSTROUTING -s \${WG_SUBNET} -o \${NAT_IFACE} -j MASQUERADE 2>/dev/null || \\
-  iptables -t nat -A POSTROUTING -s \${WG_SUBNET} -o \${NAT_IFACE} -j MASQUERADE
-iptables -C FORWARD -i wg0 -j ACCEPT 2>/dev/null || iptables -A FORWARD -i wg0 -j ACCEPT
-iptables -C FORWARD -o wg0 -j ACCEPT 2>/dev/null || iptables -A FORWARD -o wg0 -j ACCEPT
+"\${IPTABLES_CMD}" -t nat -C POSTROUTING -s \${WG_SUBNET} -o \${NAT_IFACE} -j MASQUERADE 2>/dev/null || \\
+  "\${IPTABLES_CMD}" -t nat -A POSTROUTING -s \${WG_SUBNET} -o \${NAT_IFACE} -j MASQUERADE
+"\${IPTABLES_CMD}" -C FORWARD -i wg0 -j ACCEPT 2>/dev/null || "\${IPTABLES_CMD}" -A FORWARD -i wg0 -j ACCEPT
+"\${IPTABLES_CMD}" -C FORWARD -o wg0 -j ACCEPT 2>/dev/null || "\${IPTABLES_CMD}" -A FORWARD -o wg0 -j ACCEPT
 
 # TCP MSS clamping（防止隧道内 TCP 握手问题）
-iptables -C FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null || iptables -A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
-ip6tables -C FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null || ip6tables -A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
+"\${IPTABLES_CMD}" -C FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null || "\${IPTABLES_CMD}" -A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
+"\${IP6TABLES_CMD}" -C FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null || "\${IP6TABLES_CMD}" -A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
 
 # ip route: 客户端 IP 段加入自定义路由表
 ip route add \${WG_SUBNET} dev wg0 table ${TABLE_ID} 
@@ -546,7 +589,7 @@ UPSCRIPT
 
     # 添加 ip rule（确保流量能使用自定义路由表，幂等检查）
     echo "ip rule show | grep -q \"table ${TABLE_ID}\" || ip rule add from 0.0.0.0/0 table ${TABLE_ID}" >> "${up_dir}/0000wg0"
-    echo "[wg-up] Done" >> "${up_dir}/0000wg0"
+    echo "echo \"[wg-up] Done\"" >> "${up_dir}/0000wg0"
 
     chmod +x "${up_dir}/0000wg0"
     log_info "生成 up.d/0000wg0"
@@ -561,18 +604,20 @@ generate_down_script() {
 # WireGuard down 脚本 - 清理 NAT 和路由
 WG_SUBNET="${WG_SUBNET}"
 NAT_IFACE="\$(ip route show default | awk '/default/ {print \$5; exit}')"
-IPTABLES_BACKEND="\$(iptables --version 2>/dev/null | awk '{print \$2, \$3}')"
+IPTABLES_CMD="${IPTABLES_CMD}"
+IP6TABLES_CMD="${IP6TABLES_CMD}"
+IPTABLES_BACKEND="\$("\${IPTABLES_CMD}" --version 2>/dev/null | awk '{print \$2, \$3}')"
 
 echo "[wg-down] Cleaning up NAT and routing for \${WG_SUBNET} (\${IPTABLES_BACKEND})"
 
 # 清理 iptables
-iptables -t nat -D POSTROUTING -s \${WG_SUBNET} -o \${NAT_IFACE} -j MASQUERADE 2>/dev/null
-iptables -D FORWARD -i wg0 -j ACCEPT 2>/dev/null
-iptables -D FORWARD -o wg0 -j ACCEPT 2>/dev/null
+"\${IPTABLES_CMD}" -t nat -D POSTROUTING -s \${WG_SUBNET} -o \${NAT_IFACE} -j MASQUERADE 2>/dev/null
+"\${IPTABLES_CMD}" -D FORWARD -i wg0 -j ACCEPT 2>/dev/null
+"\${IPTABLES_CMD}" -D FORWARD -o wg0 -j ACCEPT 2>/dev/null
 
 # 清理 TCP MSS clamping
-iptables -D FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null
-ip6tables -D FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null
+"\${IPTABLES_CMD}" -D FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null
+"\${IP6TABLES_CMD}" -D FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null
 
 # 清理 ip route
 ip route del \${WG_SUBNET} dev wg0 table ${TABLE_ID} 
@@ -580,7 +625,7 @@ ip route del \${WG_SUBNET} dev wg0 table ${TABLE_ID}
 DOWNSCRIPT
 
     echo "ip rule show | grep -q \"table ${TABLE_ID}\" && ip rule del from 0.0.0.0/0 table ${TABLE_ID}" >> "${down_dir}/0000wg0"
-    echo "[wg-down] Done" >> "${down_dir}/0000wg0"
+    echo "echo \"[wg-down] Done\"" >> "${down_dir}/0000wg0"
 
     chmod +x "${down_dir}/0000wg0"
     log_info "生成 pre-down.d/0000wg0"
@@ -599,7 +644,17 @@ services:
     entrypoint:
       - /bin/sh
       - -lc
-      - rm -f /tmp/wg-shutdown && exec /entrypoint.sh
+      - |
+        if [ "${HOST_IPTABLES_BACKEND}" = "legacy" ]; then
+          update-alternatives --set iptables /usr/sbin/iptables-legacy >/dev/null 2>&1 || true
+          update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy >/dev/null 2>&1 || true
+        else
+          update-alternatives --set iptables /usr/sbin/iptables-nft >/dev/null 2>&1 || true
+          update-alternatives --set ip6tables /usr/sbin/ip6tables-nft >/dev/null 2>&1 || true
+        fi
+        rm -f /tmp/wg-shutdown
+        exec /entrypoint.sh
+      - wireguard-entrypoint
     cap_add:
       - NET_ADMIN
       - SYS_MODULE
@@ -653,9 +708,29 @@ EOF
     privileged: true
     network_mode: host
     environment:
-      - USE_IPTABLES_NFT_BACKEND=0
+      - IPTABLES_BACKEND=${HOST_IPTABLES_BACKEND}
+      - USE_IPTABLES_NFT_BACKEND=${PHANTUN_USE_NFT_BACKEND}
       - RUST_LOG=INFO
-    command: phantun-server --local ${PHANTUN_PORT} --remote 127.0.0.1:${WG_PORT} --ipv4-only
+    entrypoint:
+      - /bin/sh
+      - -lc
+      - |
+        if [ "${HOST_IPTABLES_BACKEND}" = "legacy" ]; then
+          update-alternatives --set iptables /usr/sbin/iptables-legacy >/dev/null 2>&1 || true
+          update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy >/dev/null 2>&1 || true
+        else
+          update-alternatives --set iptables /usr/sbin/iptables-nft >/dev/null 2>&1 || true
+          update-alternatives --set ip6tables /usr/sbin/ip6tables-nft >/dev/null 2>&1 || true
+        fi
+        exec /usr/local/bin/phantun.sh "\$@"
+      - phantun-entrypoint
+    command:
+      - phantun-server
+      - --local
+      - "${PHANTUN_PORT}"
+      - --remote
+      - "127.0.0.1:${WG_PORT}"
+      - --ipv4-only
     restart: unless-stopped
     depends_on:
       - wireguard
@@ -812,7 +887,7 @@ verify_deployment() {
     echo -n "  iptables MASQUERADE: "
     local iptables_found=""
     local iptables_backend=""
-    for cmd in iptables iptables-nft iptables-legacy; do
+    for cmd in "${IPTABLES_CMD}" iptables iptables-nft iptables-legacy; do
         if command -v "$cmd" >/dev/null 2>&1 && \
            "$cmd" -t nat -L POSTROUTING -n 2>/dev/null | grep -q "MASQUERADE"; then
             iptables_found="yes"
@@ -1074,6 +1149,8 @@ main() {
 
     log_step "检查 Docker..."
     check_docker
+
+    detect_host_iptables_backend
 
     load_images
 

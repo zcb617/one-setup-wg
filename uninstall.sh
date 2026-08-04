@@ -80,6 +80,22 @@ else
     exit 1
 fi
 
+delete_iptables_rule_all_backends() {
+    local cmd
+    for cmd in iptables iptables-legacy iptables-nft; do
+        command -v "$cmd" >/dev/null 2>&1 || continue
+        "$cmd" "$@" 2>/dev/null || true
+    done
+}
+
+delete_ip6tables_rule_all_backends() {
+    local cmd
+    for cmd in ip6tables ip6tables-legacy ip6tables-nft; do
+        command -v "$cmd" >/dev/null 2>&1 || continue
+        "$cmd" "$@" 2>/dev/null || true
+    done
+}
+
 # ========================= 停止并删除容器 =========================
 log_step "停止并删除容器..."
 if [ -d "$DEPLOY_DIR" ]; then
@@ -103,9 +119,11 @@ fi
 log_step "清理 iptables 规则..."
 NAT_IFACE="$(ip route show default | awk '/default/ {print $5; exit}')"
 
-iptables -t nat -D POSTROUTING -s ${WG_SUBNET} -o ${NAT_IFACE} -j MASQUERADE 2>/dev/null || true
-iptables -D FORWARD -i wg0 -j ACCEPT 2>/dev/null || true
-iptables -D FORWARD -o wg0 -j ACCEPT 2>/dev/null || true
+delete_iptables_rule_all_backends -t nat -D POSTROUTING -s "${WG_SUBNET}" -o "${NAT_IFACE}" -j MASQUERADE
+delete_iptables_rule_all_backends -D FORWARD -i wg0 -j ACCEPT
+delete_iptables_rule_all_backends -D FORWARD -o wg0 -j ACCEPT
+delete_iptables_rule_all_backends -D FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
+delete_ip6tables_rule_all_backends -D FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
 
 log_info "iptables 规则已清理"
 
