@@ -6,3 +6,5 @@ baidu.png
 
 # Remember hook data
 .remember/
+.codex
+.DS_Store
