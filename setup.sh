@@ -674,7 +674,7 @@ services:
     restart: unless-stopped
 
   wg-gen-web:
-    image: zcb617/wg-gen-web:0.0.4
+    image: zcb617/wg-gen-web:0.0.5
     container_name: wg-gen-web
     environment:
       - WG_CONF_DIR=/config
@@ -1040,10 +1040,10 @@ load_images() {
         missing_images+=("james/wg-api:latest|wg-api.tar")
     fi
 
-    if docker image inspect "zcb617/wg-gen-web:0.0.4" &>/dev/null; then
-        log_info "zcb617/wg-gen-web:0.0.4 已存在"
+    if docker image inspect "zcb617/wg-gen-web:0.0.5" &>/dev/null; then
+        log_info "zcb617/wg-gen-web:0.0.5 已存在"
     else
-        missing_images+=("zcb617/wg-gen-web:0.0.4|wg-gen-web.tar")
+        missing_images+=("zcb617/wg-gen-web:0.0.5|wg-gen-web.tar")
     fi
 
     if docker image inspect "zcb617/one-step-wg:0.0.6" &>/dev/null; then
@@ -1114,7 +1114,7 @@ load_images() {
             local tag=""
             case "$tar" in
                 wg-api.tar) tag="james/wg-api:latest" ;;
-                wg-gen-web.tar) tag="zcb617/wg-gen-web:0.0.4" ;;
+                wg-gen-web.tar) tag="zcb617/wg-gen-web:0.0.5" ;;
                 one-step-wg-0.0.6.tar) tag="zcb617/one-step-wg:0.0.6" ;;
                 phantun.tar) tag="zcb617/phantun:0.8.1" ;;
                 dnscrypt-server.tar) tag="jedisct1/dnscrypt-server:latest" ;;
