@@ -34,7 +34,7 @@
 | 基础安装 | `james/wg-api:latest` | `wg-api.tar` |
 | 基础安装 | `zcb617/wg-gen-web:0.0.4` | `wg-gen-web.tar` |
 | 基础安装 | `zcb617/one-step-wg:0.0.6` | `one-step-wg-0.0.6.tar` |
-| 启用 Phantun 时 | `zcb617/phantun:0.8.1` | `phantun.tar` |
+| 启用 Phantun 时 | `zcb617/phantun:0.8.1-reconnect.1` | `phantun.tar` |
 | 启用 DNSCrypt 时 | `jedisct1/dnscrypt-server:latest` | `dnscrypt-server.tar` |
 
 ## 方式一：一键下载安装
@@ -102,10 +102,10 @@ docker pull james/wg-api:latest
 docker pull jedisct1/dnscrypt-server:latest
 ```
 
-当前仓库的 Phantun 子模块不包含 `docker/Dockerfile`，不能据此复现 `zcb617/phantun:0.8.1`。如安装时启用 Phantun，请自行补齐 Dockerfile 后构建，并使用该准确标签：
+如启用 Phantun，可使用子模块内的 Dockerfile 构建修复版镜像。建议客户端与服务端同时更新到修复版本：
 
 ```bash
-docker build -t zcb617/phantun:0.8.1 -f <Phantun Dockerfile> <构建上下文>
+docker build -t zcb617/phantun:0.8.1-reconnect.1 -f vendor/phantun/docker/Dockerfile vendor/phantun
 ```
 
 所需镜像均已存在后，在仓库根目录执行：
