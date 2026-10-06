@@ -32,7 +32,7 @@
 | 功能 | 镜像 | tar 文件 |
 | --- | --- | --- |
 | 基础安装 | `james/wg-api:latest` | `wg-api.tar` |
-| 基础安装 | `zcb617/wg-gen-web:0.0.4` | `wg-gen-web.tar` |
+| 基础安装 | `zcb617/wg-gen-web:0.0.5` | `wg-gen-web.tar` |
 | 基础安装 | `zcb617/one-step-wg:0.0.6` | `one-step-wg-0.0.6.tar` |
 | 启用 Phantun 时 | `zcb617/phantun:0.8.1-reconnect.1` | `phantun.tar` |
 | 启用 DNSCrypt 时 | `jedisct1/dnscrypt-server:latest` | `dnscrypt-server.tar` |
@@ -90,7 +90,7 @@ cd one-setup-wg
 
 ```bash
 docker build -t zcb617/one-step-wg:0.0.6 -f docker-build/Dockerfile docker-build
-docker build --build-arg COMMIT=0.0.4 -t zcb617/wg-gen-web:0.0.4 vendor/wg-gen-web
+docker build --build-arg COMMIT=0.0.5 -t zcb617/wg-gen-web:0.0.5 vendor/wg-gen-web
 ```
 
 `wg-api` 与 DNSCrypt 是第三方镜像；当前仓库没有它们的 Dockerfile。基础安装还需要在本机存在 `james/wg-api:latest`：
