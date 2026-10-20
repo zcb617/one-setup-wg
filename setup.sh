@@ -378,6 +378,114 @@ setup_rt_tables() {
     fi
 }
 
+# 在启用 Phantun 时设置服务端 UDP 接收缓冲下限，并持久化保留的实际值。
+setup_phantun_udp_buffers() {
+    if [ "${PHANTUN_ENABLE:-n}" != "y" ]; then
+        return 0
+    fi
+
+    local conf="/etc/sysctl.d/90-phantun.conf"
+    local target_default=4194304
+    local target_max=8388608
+    local live_default live_max persisted_values temp_file
+
+    if ! live_default=$(sysctl -n net.core.rmem_default 2>/dev/null); then
+        log_error "读取 net.core.rmem_default 运行值失败"
+        return 1
+    fi
+    if [[ ! "$live_default" =~ ^[0-9]+$ ]]; then
+        log_error "net.core.rmem_default 运行值不是非负十进制整数: ${live_default}"
+        return 1
+    fi
+    if ! live_max=$(sysctl -n net.core.rmem_max 2>/dev/null); then
+        log_error "读取 net.core.rmem_max 运行值失败"
+        return 1
+    fi
+    if [[ ! "$live_max" =~ ^[0-9]+$ ]]; then
+        log_error "net.core.rmem_max 运行值不是非负十进制整数: ${live_max}"
+        return 1
+    fi
+
+    if awk -v value="$live_default" -v target="$target_default" 'BEGIN { exit !(value + 0 > target + 0) }'; then
+        target_default="$live_default"
+    fi
+    if awk -v value="$live_max" -v target="$target_max" 'BEGIN { exit !(value + 0 > target + 0) }'; then
+        target_max="$live_max"
+    fi
+
+    if [ -f "$conf" ]; then
+        if ! persisted_values=$(awk -v current_default="$target_default" -v current_max="$target_max" '
+            {
+                line = $0
+                sub(/^[[:space:]]*/, "", line)
+                if (line == "" || line ~ /^#/) {
+                    next
+                }
+                equals = index(line, "=")
+                if (equals == 0) {
+                    next
+                }
+                key = substr(line, 1, equals - 1)
+                value = substr(line, equals + 1)
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", key)
+                sub(/[[:space:]]*#.*/, "", value)
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+                if (value !~ /^[0-9]+$/) {
+                    next
+                }
+                if (key == "net.core.rmem_default" && value + 0 > current_default + 0) {
+                    current_default = value
+                }
+                if (key == "net.core.rmem_max" && value + 0 > current_max + 0) {
+                    current_max = value
+                }
+            }
+            END {
+                printf "%s\t%s\n", current_default, current_max
+            }
+        ' "$conf"); then
+            log_error "读取 Phantun 持久化配置失败: ${conf}"
+            return 1
+        fi
+        IFS=$'\t' read -r target_default target_max <<< "$persisted_values"
+    fi
+
+    if awk -v value="$target_default" -v target="$target_max" 'BEGIN { exit !(value + 0 > target + 0) }'; then
+        target_max="$target_default"
+    fi
+
+    if ! sysctl -w "net.core.rmem_max=${target_max}" >/dev/null; then
+        log_error "设置 net.core.rmem_max=${target_max} 失败"
+        return 1
+    fi
+    if ! sysctl -w "net.core.rmem_default=${target_default}" >/dev/null; then
+        log_error "设置 net.core.rmem_default=${target_default} 失败"
+        return 1
+    fi
+
+    if ! mkdir -p "$(dirname "$conf")"; then
+        log_error "创建 sysctl 配置目录失败: $(dirname "$conf")"
+        return 1
+    fi
+    if ! temp_file=$(mktemp "${conf}.tmp.XXXXXX"); then
+        log_error "创建 Phantun sysctl 临时配置失败: ${conf}"
+        return 1
+    fi
+    if ! printf '# Phantun 服务端 UDP 接收缓冲配置\nnet.core.rmem_max=%s\nnet.core.rmem_default=%s\n' "$target_max" "$target_default" > "$temp_file"; then
+        log_error "写入 Phantun sysctl 临时配置失败: ${temp_file}"
+        rm -f "$temp_file" || true
+        return 1
+    fi
+    if ! mv -f "$temp_file" "$conf"; then
+        log_error "替换 Phantun sysctl 持久化配置失败: ${conf}"
+        rm -f "$temp_file" || true
+        return 1
+    fi
+
+    log_info "已设置 Phantun UDP 接收缓冲: net.core.rmem_max=${target_max}, net.core.rmem_default=${target_default}; 已持久化到 ${conf}"
+}
+
+# 配置宿主机运行 WireGuard 所需的标记路由与 IP 转发参数。
 setup_host_sysctl() {
     # host 网络模式下，必须在宿主机设置 sysctl
     if sysctl -w net.ipv4.conf.all.src_valid_mark=1 2>/dev/null; then
@@ -397,6 +505,8 @@ setup_host_sysctl() {
         echo "net.ipv4.ip_forward=1" >> /etc/sysctl.d/99-wireguard.conf
         log_info "已开启 IP 转发"
     fi
+
+    setup_phantun_udp_buffers
 }
 
 # ========================= 生成文件 =========================
@@ -958,6 +1068,12 @@ verify_deployment() {
         echo "  Phantun 已启用:"
         echo "    TCP 端口: ${PHANTUN_PORT} (fake TCP -> UDP ${WG_PORT})"
         echo "    客户端命令: phantun_client --local 127.0.0.1:${WG_PORT} --remote ${SERVER_EXTERNAL_IP}:${PHANTUN_PORT} --ipv4-only"
+        echo "    Linux 客户端 UDP 接收缓冲建议（在客户端宿主机配置）："
+        echo "    配置文件：/etc/sysctl.d/90-phantun.conf"
+        echo "    net.core.rmem_max=8388608"
+        echo "    net.core.rmem_default=4194304"
+        echo "    应用：sudo sysctl -p /etc/sysctl.d/90-phantun.conf"
+        echo "    已有更大的值请保留；已运行的客户端需重启 Phantun，让新 socket 使用配置。"
     fi
     if [ "${DNSCRYPT_ENABLE}" = "y" ]; then
         echo ""
