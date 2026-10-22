@@ -878,7 +878,7 @@ EOF
         cat >> "${DEPLOY_DIR}/docker-compose.yml" << EOF
 
   phantun:
-    image: zcb617/phantun:0.8.1-reconnect.2
+    image: zcb617/phantun:0.8.1-reconnect.3
     container_name: phantun
     privileged: true
     network_mode: host
@@ -1234,10 +1234,10 @@ load_images() {
     fi
 
     if [ "${PHANTUN_ENABLE}" = "y" ]; then
-        if docker image inspect "zcb617/phantun:0.8.1-reconnect.2" &>/dev/null; then
-            log_info "zcb617/phantun:0.8.1-reconnect.2 已存在"
+        if docker image inspect "zcb617/phantun:0.8.1-reconnect.3" &>/dev/null; then
+            log_info "zcb617/phantun:0.8.1-reconnect.3 已存在"
         else
-            missing_images+=("zcb617/phantun:0.8.1-reconnect.2|phantun.tar")
+            missing_images+=("zcb617/phantun:0.8.1-reconnect.3|phantun.tar")
         fi
     fi
 
@@ -1297,7 +1297,7 @@ load_images() {
                 wg-api.tar) tag="james/wg-api:latest" ;;
                 wg-gen-web.tar) tag="zcb617/wg-gen-web:0.0.5" ;;
                 one-step-wg-0.0.6.tar) tag="zcb617/one-step-wg:0.0.6" ;;
-                phantun.tar) tag="zcb617/phantun:0.8.1-reconnect.2" ;;
+                phantun.tar) tag="zcb617/phantun:0.8.1-reconnect.3" ;;
                 dnscrypt-server.tar) tag="jedisct1/dnscrypt-server:latest" ;;
             esac
             log_info "正在拉取 $tag ..."
