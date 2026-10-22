@@ -509,6 +509,71 @@ setup_host_sysctl() {
     setup_phantun_udp_buffers
 }
 
+# 为宿主机 WireGuard 策略路由创建 networkd 防清理配置。
+setup_host_networkd_policy() {
+    local conf="/etc/systemd/networkd.conf.d/90-one-step-wg-policy.conf"
+    local content='# Managed by one-step-wg: preserve WireGuard policy routing rules
+[Network]
+ManageForeignRoutingPolicyRules=no
+'
+    local systemd_version
+    local temp_file=""
+
+    if ! command -v systemctl >/dev/null 2>&1 || ! systemctl cat systemd-networkd.service >/dev/null 2>&1; then
+        log_info "未检测到 systemd-networkd.service，跳过宿主机策略路由保护配置"
+        return 0
+    fi
+
+    if ! systemd_version=$( (set -o pipefail; systemctl --version 2>/dev/null | awk 'NR==1 {print $2;exit}') ); then
+        log_warn "无法读取 systemd 版本，跳过 networkd 策略路由保护配置"
+        return 0
+    fi
+    if [[ ! "$systemd_version" =~ ^[0-9]+$ ]] || (( 10#$systemd_version < 249 )); then
+        log_warn "systemd 版本不支持 ManageForeignRoutingPolicyRules，跳过 networkd 策略路由保护配置"
+        return 0
+    fi
+
+    if [ -L "$conf" ] || { [ -e "$conf" ] && [ ! -f "$conf" ]; }; then
+        log_error "networkd 策略路由配置路径不是普通文件，保留原路径: ${conf}"
+        return 1
+    fi
+
+    if [ -f "$conf" ]; then
+        if printf '%s' "$content" | cmp -s - "$conf"; then
+            log_info "宿主机策略路由保护配置已存在: ${conf}"
+            return 0
+        fi
+        log_error "同名 networkd 配置是外部配置，保留原文件: ${conf}"
+        return 1
+    fi
+
+    if ! mkdir -p "${conf%/*}"; then
+        log_error "创建 networkd 配置目录失败: ${conf%/*}"
+        return 1
+    fi
+    if ! temp_file=$(mktemp "${conf}.XXXXXX"); then
+        log_error "创建 networkd 临时配置失败: ${conf}"
+        return 1
+    fi
+    if ! printf '%s' "$content" > "$temp_file"; then
+        log_error "写入 networkd 临时配置失败: ${temp_file}"
+        rm -f -- "$temp_file" || true
+        return 1
+    fi
+    if ! chmod 644 "$temp_file"; then
+        log_error "设置 networkd 配置权限失败: ${temp_file}"
+        rm -f -- "$temp_file" || true
+        return 1
+    fi
+    if ! mv -- "$temp_file" "$conf"; then
+        log_error "安装 networkd 策略路由配置失败: ${conf}"
+        rm -f -- "$temp_file" || true
+        return 1
+    fi
+
+    log_info "已创建宿主机策略路由保护配置: ${conf}；下次网络服务启动时读取"
+}
+
 # ========================= 生成文件 =========================
 
 # 辅助函数：逗号分隔的 IP 列表转 JSON 数组
@@ -1292,6 +1357,9 @@ main() {
             ip link del wg0 
         fi
     fi
+
+    log_step "配置宿主机策略路由保护..."
+    setup_host_networkd_policy
 
     log_step "生成配置文件..."
     mkdir -p "${DEPLOY_DIR}"

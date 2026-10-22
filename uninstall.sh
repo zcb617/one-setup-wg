@@ -40,6 +40,7 @@ if [ "$FORCE" != true ]; then
     echo "    - iptables MASQUERADE / FORWARD 规则"
     echo "    - ip route 自定义路由表 (table 9999)"
     echo "    - /etc/iproute2/rt_tables.d/wg.conf"
+    echo "    - 本安装器专属 networkd 策略路由配置 (未修改时恢复)"
     echo "    - 部署目录 (默认 /opt/one-step-wg)"
     echo ""
     read -rp "确认卸载? 所有配置将被删除 (y/N): " confirm
@@ -96,6 +97,34 @@ delete_ip6tables_rule_all_backends() {
     done
 }
 
+# 恢复宿主机 networkd 策略路由配置，使原有规则管理行为重新生效。
+restore_host_networkd_policy() {
+    local conf="/etc/systemd/networkd.conf.d/90-one-step-wg-policy.conf"
+    local content='# Managed by one-step-wg: preserve WireGuard policy routing rules
+[Network]
+ManageForeignRoutingPolicyRules=no
+'
+
+    if [ ! -e "$conf" ] && [ ! -L "$conf" ]; then
+        log_info "本安装器专属 networkd 配置不存在: ${conf}"
+        return 0
+    fi
+    if [ -L "$conf" ] || [ ! -f "$conf" ]; then
+        log_warn "networkd 配置是外部路径或已修改路径，保留: ${conf}"
+        return 0
+    fi
+    if ! printf '%s' "$content" | cmp -s - "$conf"; then
+        log_warn "networkd 配置内容已修改，保留外部配置: ${conf}"
+        return 0
+    fi
+    if ! rm -f -- "$conf"; then
+        log_error "删除本安装器专属 networkd 配置失败: ${conf}"
+        return 1
+    fi
+
+    log_info "已删除安装器专属配置；下次网络服务启动时按原有配置或系统默认读取"
+}
+
 # ========================= 停止并删除容器 =========================
 log_step "停止并删除容器..."
 if [ -d "$DEPLOY_DIR" ]; then
@@ -142,6 +171,9 @@ if [ -f "$rt_file" ]; then
 else
     log_info "$rt_file 不存在"
 fi
+
+log_step "恢复宿主机策略路由配置..."
+restore_host_networkd_policy
 
 # ========================= 删除部署目录 =========================
 if [ "$KEEP_DIR" != true ]; then
