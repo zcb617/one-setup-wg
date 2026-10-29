@@ -750,12 +750,13 @@ echo "[wg-up] Configuring NAT and routing for \${WG_SUBNET} via \${NAT_IFACE} (\
 # iptables NAT 规则（幂等：先检查再添加）
 "\${IPTABLES_CMD}" -t nat -C POSTROUTING -s \${WG_SUBNET} -o \${NAT_IFACE} -j MASQUERADE 2>/dev/null || \\
   "\${IPTABLES_CMD}" -t nat -A POSTROUTING -s \${WG_SUBNET} -o \${NAT_IFACE} -j MASQUERADE
-"\${IPTABLES_CMD}" -C FORWARD -i wg0 -j ACCEPT 2>/dev/null || "\${IPTABLES_CMD}" -A FORWARD -i wg0 -j ACCEPT
-"\${IPTABLES_CMD}" -C FORWARD -o wg0 -j ACCEPT 2>/dev/null || "\${IPTABLES_CMD}" -A FORWARD -o wg0 -j ACCEPT
 
 # TCP MSS clamping（防止隧道内 TCP 握手问题）
 "\${IPTABLES_CMD}" -C FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null || "\${IPTABLES_CMD}" -A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
 "\${IP6TABLES_CMD}" -C FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null || "\${IP6TABLES_CMD}" -A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
+
+"\${IPTABLES_CMD}" -C FORWARD -i wg0 -j ACCEPT 2>/dev/null || "\${IPTABLES_CMD}" -A FORWARD -i wg0 -j ACCEPT
+"\${IPTABLES_CMD}" -C FORWARD -o wg0 -j ACCEPT 2>/dev/null || "\${IPTABLES_CMD}" -A FORWARD -o wg0 -j ACCEPT
 
 # ip route: 客户端 IP 段加入自定义路由表
 ip route add \${WG_SUBNET} dev wg0 table ${TABLE_ID} 
